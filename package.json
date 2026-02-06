@@ -1,7 +1,7 @@
 {
   "name": "create-todo-vue",
   "type": "module",
-  "version": "1.0.0-beta.4",
+  "version": "1.0.0-beta.5",
   "packageManager": "pnpm@10.28.2",
   "description": "💡 create vue projects with awesome templates",
   "author": "HuberyYang",
