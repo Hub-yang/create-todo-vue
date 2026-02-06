@@ -1,7 +1,7 @@
 {
   "name": "create-todo-vue",
   "type": "module",
-  "version": "1.0.0-beta.1",
+  "version": "1.0.0-beta.2",
   "private": true,
   "packageManager": "pnpm@10.28.2",
   "description": "💡 create vue projects with awesome templates",
@@ -42,7 +42,7 @@
     "build": "tsdown",
     "test": "vitest",
     "typecheck": "tsc",
-    "release": "bumpp && npm publish --tag alpha",
+    "release": "bumpp && npm publish --tag beta",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
     "taze": "npx taze major -r",
