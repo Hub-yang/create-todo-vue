@@ -11,5 +11,6 @@ export default antfu({
     'template-*',
     '**/dist/**',
     '.git',
+    '.github/**',
   ],
 })
