@@ -3,10 +3,9 @@ import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import * as prompts from '@clack/prompts'
-import { determineAgent } from '@vercel/detect-agent'
 import spawn from 'cross-spawn'
 import mri from 'mri'
-import { DEFAULTE_TARGETDIR, DEFAULTE_TEMPLATE, FRAMEWORKS, HELP_MESSAGE, RENAME_FILES, TEMPLATES } from './constants'
+import { DEFAULTE_TARGETDIR, FRAMEWORKS, HELP_MESSAGE, RENAME_FILES, TEMPLATES } from './constants'
 import { cancel, copy, emptyDir, formatTargetDir, getFullCustomCommand, getInstallCommand, getLabel, install, isEmpty, isValidPackageName, pkgFromUserAgent, toValidPackageName } from './utils'
 
 interface Options {
@@ -21,7 +20,7 @@ const spin = prompts.spinner()
 const cwd = process.cwd()
 
 const argv = mri<Options>(process.argv.slice(2), {
-  boolean: ['help', 'overwrite', 'immediate', 'rolldown', 'interactive'],
+  boolean: ['help', 'overwrite', 'immediate'],
   alias: { h: 'help', t: 'template', i: 'immediate' },
   string: ['template'],
 })
@@ -31,7 +30,6 @@ async function init() {
   const argOverwrite = argv.overwrite
   const argTemplate = argv.template
   const argImmediate = argv.immediate
-  const argInteractive = argv.interactive
 
   const help = argv.help
   if (help) {
@@ -39,36 +37,22 @@ async function init() {
     return false
   }
 
-  const interactive = argInteractive ?? process.stdin.isTTY
-  // 检测 AI 代理环境，以获得更好的代理体验 (AX)
-  const { isAgent } = await determineAgent()
-
-  if (isAgent && interactive) {
-    // 要一次性创建项目，请运行：create-vite <目录> --no-interactive --template <模板>
-    console.log('\n要一次性创建项目，请运行：create-vite <目录> --no-interactive --template <模板>\n')
-  }
-
   const pkgInfo = pkgFromUserAgent(process.env.npm_config_user_agent)
 
   // 1.获取项目名称和目标目录
   let targetDir = argTargetDir
   if (!targetDir) {
-    if (interactive) {
-      const projectName = await prompts.text({
-        message: '项目名称:',
-        defaultValue: DEFAULTE_TARGETDIR,
-        placeholder: DEFAULTE_TARGETDIR,
-        validate(value) {
-          return !value || formatTargetDir(value).length > 0 ? undefined : '项目名称无效'
-        },
-      })
-      if (prompts.isCancel(projectName))
-        return cancel()
-      targetDir = formatTargetDir(projectName)
-    }
-    else {
-      targetDir = DEFAULTE_TARGETDIR
-    }
+    const projectName = await prompts.text({
+      message: '项目名称:',
+      defaultValue: DEFAULTE_TARGETDIR,
+      placeholder: DEFAULTE_TARGETDIR,
+      validate(value) {
+        return !value || formatTargetDir(value).length > 0 ? undefined : '项目名称无效'
+      },
+    })
+    if (prompts.isCancel(projectName))
+      return cancel()
+    targetDir = formatTargetDir(projectName)
   }
 
   // 2.如果目录存在且不为空，则进行处理
@@ -76,32 +60,27 @@ async function init() {
     let overwrite: 'yes' | 'no' | 'ignore' | undefined = argOverwrite ? 'yes' : undefined
 
     if (!overwrite) {
-      if (interactive) {
-        const res = await prompts.select({
-          message: `${targetDir === '.' ? '当前目录' : `目标目录${targetDir}`} 不为空，请选择如何继续`,
-          options: [
-            {
-              label: '取消操作',
-              value: 'no',
-            },
-            {
-              label: '删除现有文件并继续',
-              value: 'yes',
-            },
-            {
-              label: '忽略文件并继续',
-              value: 'ignore',
-            },
-          ],
-        })
-        if (prompts.isCancel(res)) {
-          return cancel()
-        }
-        overwrite = res
+      const res = await prompts.select({
+        message: `${targetDir === '.' ? '当前目录' : `目标目录${targetDir}`} 不为空，请选择如何继续`,
+        options: [
+          {
+            label: '取消操作',
+            value: 'no',
+          },
+          {
+            label: '删除现有文件并继续',
+            value: 'yes',
+          },
+          {
+            label: '忽略文件并继续',
+            value: 'ignore',
+          },
+        ],
+      })
+      if (prompts.isCancel(res)) {
+        return cancel()
       }
-      else {
-        overwrite = 'no'
-      }
+      overwrite = res
     }
 
     switch (overwrite) {
@@ -118,24 +97,19 @@ async function init() {
   // 取目标目录名作为默认package.json name
   let packageName = path.basename(path.resolve(targetDir))
   if (!isValidPackageName(packageName)) {
-    if (interactive) {
-      const packageNameResult = await prompts.text({
-        message: '请输入package.json name',
-        defaultValue: toValidPackageName(packageName),
-        placeholder: toValidPackageName(packageName),
-        validate(dir) {
-          if (dir && !isValidPackageName(dir)) {
-            return '无效的package.json name'
-          }
-        },
-      })
-      if (prompts.isCancel(packageNameResult))
-        return cancel()
-      packageName = packageNameResult
-    }
-    else {
-      packageName = toValidPackageName(packageName)
-    }
+    const packageNameResult = await prompts.text({
+      message: '请输入package.json name',
+      defaultValue: toValidPackageName(packageName),
+      placeholder: toValidPackageName(packageName),
+      validate(dir) {
+        if (dir && !isValidPackageName(dir)) {
+          return '无效的package.json name'
+        }
+      },
+    })
+    if (prompts.isCancel(packageNameResult))
+      return cancel()
+    packageName = packageNameResult
   }
 
   // 4. 选择框架
@@ -146,45 +120,40 @@ async function init() {
     hasInvalidArgTemplate = true
   }
   if (!template) {
-    if (interactive) {
-      const framework = await prompts.select({
-        message: hasInvalidArgTemplate
-          ? `${argTemplate}不是有效的模板名，请从以下选取：`
-          : '选择模板',
-        options: FRAMEWORKS.map((f) => {
-          const { color, name, display } = f
+    const framework = await prompts.select({
+      message: hasInvalidArgTemplate
+        ? `${argTemplate}不是有效的模板名，请从以下选取：`
+        : '选择模板',
+      options: FRAMEWORKS.map((f) => {
+        const { color, name, display } = f
+        return {
+          label: color(display || name),
+          value: f,
+        }
+      }),
+    })
+    if (prompts.isCancel(framework))
+      return cancel()
+    template = framework.name
+
+    if (framework.variants?.length) {
+      const variant = await prompts.select({
+        message: '选择预设',
+        options: framework.variants.map((v) => {
+          const { name, customCommand } = v
+          const command = customCommand
+            ? getFullCustomCommand(customCommand, pkgInfo).replace(/ TARGET_DIR$/, '')
+            : undefined
           return {
-            label: color(display || name),
-            value: f,
+            label: getLabel(v),
+            value: name,
+            hint: command,
           }
         }),
       })
-      if (prompts.isCancel(framework))
+      if (prompts.isCancel(variant))
         return cancel()
-      template = framework.name
-
-      if (framework.variants?.length) {
-        const variant = await prompts.select({
-          message: '选择预设',
-          options: framework.variants.map((v) => {
-            const { name, customCommand } = v
-            const command = customCommand
-              ? getFullCustomCommand(customCommand, pkgInfo).replace(/ TARGET_DIR$/, '')
-              : undefined
-            return {
-              label: getLabel(v),
-              value: name,
-              hint: command,
-            }
-          }),
-        })
-        if (prompts.isCancel(variant))
-          return cancel()
-        template = variant
-      }
-    }
-    else {
-      template = DEFAULTE_TEMPLATE
+      template = variant
     }
   }
 
@@ -250,17 +219,12 @@ async function init() {
   let immediate = argImmediate
 
   if (immediate === undefined) {
-    if (interactive) {
-      const immediateResult = await prompts.confirm({
-        message: `是否立即使用${pkgManager}安装依赖？`,
-      })
-      if (prompts.isCancel(immediateResult))
-        return cancel()
-      immediate = immediateResult
-    }
-    else {
-      immediate = false
-    }
+    const immediateResult = await prompts.confirm({
+      message: `是否立即使用${pkgManager}安装依赖？`,
+    })
+    if (prompts.isCancel(immediateResult))
+      return cancel()
+    immediate = immediateResult
   }
 
   if (immediate) {
