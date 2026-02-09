@@ -6,6 +6,9 @@
   <a href="https://opensource.org/license/MIT"><img src="https://img.shields.io/npm/l/express" alt="license"/></a>
 </div>
 
+> [!WARNING]
+> 当前处于beta阶段，使用时需在指令末尾手动添加版本号 `@beta`, deno添加`@1.0.0-beta.X`
+
 ### 💡 说明 (Features)
 
 使用自定义模板快速创建最新的vue项目
