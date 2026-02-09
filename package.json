@@ -1,35 +1,74 @@
 {
-  "name": "init-template",
+  "name": "create-todo-vue",
   "type": "module",
-  "version": "1.0.0",
-  "private": true,
+  "version": "",
   "packageManager": "pnpm@10.28.2",
-  "description": "",
+  "description": "💡 create vue projects with awesome templates",
   "author": "HuberyYang",
   "license": "MIT",
-  "homepage": "",
+  "homepage": "https://github.com/Hub-yang/create-todo-vue",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Hub-yang/**.git"
+    "url": "git+https://github.com/Hub-yang/create-todo-vue.git"
   },
   "bugs": {
-    "url": "https://github.com/Hub-yang/**/issues"
+    "url": "https://github.com/Hub-yang/create-todo-vue/issues"
   },
   "keywords": [
+    "scripts",
+    "node",
+    "bash",
+    "bin",
+    "sh",
+    "cli",
     "template"
+  ],
+  "bin": {
+    "create-todo-vue": "bin/index.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "template-vitesse-base",
+    "template-vitesse-lite"
   ],
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },
   "scripts": {
+    "dev": "tsdown --watch",
+    "preview": "node ./bin/index.js",
+    "build": "tsdown",
+    "test": "vitest",
+    "typecheck": "tsc",
+    "release": "nr build && bumpp && npm publish --tag beta",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
     "taze": "npx taze major -r",
-    "license:mit": "npx license MIT",
-    "release": "bumpp && npm publish",
-    "commitlint:init": "npx hubery commitlint-init"
+    "prepare": "husky",
+    "commitlint": "commitlint --edit"
   },
   "devDependencies": {
-    "@huberyyang/todo-scripts": "latest"
+    "@antfu/eslint-config": "^7.2.0",
+    "@clack/prompts": "^1.0.0",
+    "@commitlint/cli": "^20.4.1",
+    "@commitlint/config-conventional": "^20.4.1",
+    "@huberyyang/todo-scripts": "^1.0.8",
+    "@types/cross-spawn": "^6.0.6",
+    "@types/node": "^20.19.0 || >=22.12.0",
+    "@vercel/detect-agent": "^1.1.0",
+    "baseline-browser-mapping": "^2.9.19",
+    "bumpp": "^10.4.1",
+    "cross-spawn": "^7.0.6",
+    "eslint": "^9.39.2",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
+    "mri": "^1.2.0",
+    "picocolors": "^1.1.1",
+    "tsdown": "^0.20.3",
+    "vitest": "^4.0.18"
+  },
+  "lint-staged": {
+    "*": "eslint . --fix"
   }
 }
