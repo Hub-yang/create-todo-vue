@@ -16,25 +16,51 @@ interface Framework {
   variants?: FrameworkVariant[]
 }
 
-const { green } = colors
+const { green, yellow, blue } = colors
 
 export const HELP_MESSAGE = `\
-用法: hubery-create [OPTION]... [DIRECTORY]
+用法: @huberyyang/create-todo-vue [参数]... [目录]
 
-创建通用模板
+快速创建vue模板
 
-Options:
-  -t, --template                        使用指定模板
-  -i, --immediate                       安装依赖并执行
-  --interactive / --no-interactive      交互模式切换
+参数:
+  -h, --help                            查看帮助
+  -t, --template                        指定模板
+  -i, --immediate                       创建后立即安装依赖
+  --overwrite                           是否覆盖创建
 
 可用模板:
-${green ('vitesse              vitesse')}`
+${green ('vue                       vue         ')}
+${green ('vue-ts                    vue-ts      ')}
+${green ('vitesse-base              vitesse-base')}
+${green ('vitesse-lite              vitesse-lite')}`
 
-export const DEFAULTE_TARGETDIR = 'vite-project'
-export const DEFAULTE_TEMPLATE = 'vitesse-lite'
+export const DEFAULTE_TARGETDIR = 'vue-project'
 
 export const FRAMEWORKS: Framework[] = [
+  {
+    name: 'vue',
+    display: 'Vue',
+    color: green,
+    variants: [
+      {
+        name: 'vue-ts',
+        display: 'TypeScript',
+        color: blue,
+      },
+      {
+        name: 'vue',
+        display: 'JavaScript',
+        color: yellow,
+      },
+      {
+        name: 'custom-create-vue',
+        display: 'Official Vue Starter ↗',
+        color: green,
+        customCommand: 'npm create vue@latest TARGET_DIR',
+      },
+    ],
+  },
   {
     name: 'vitesse',
     display: 'vitesse',
