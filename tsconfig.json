@@ -1,16 +1,27 @@
 {
   "compilerOptions": {
-    "target": "ES2023",
+    "target": "ESNext",
     "module": "Preserve",
     "moduleResolution": "bundler",
     "types": ["node"],
     "allowImportingTsExtensions": true,
     "strict": true,
+    "strictNullChecks": true,
+    "noImplicitAny": true,
     "noUnusedLocals": true,
     "noEmit": true,
     "outDir": "dist",
     "esModuleInterop": true,
     "skipLibCheck": true
   },
-  "include": ["tsdown.config.ts", "src", "tests"]
+  "include": [
+    "src",
+    "tests"
+  ],
+  "exclude": [
+    "template-*",
+    "bin",
+    "dist",
+    "node_modules"
+  ]
 }
