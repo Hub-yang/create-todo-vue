@@ -39,8 +39,9 @@
   },
   "scripts": {
     "dev": "tsdown --watch",
-    "preview": "node ./bin/index.js",
+    "preview": "nr build && node ./bin/index.js",
     "build": "tsdown",
+    "build:prod": "nr typecheck && nr lint:fix && tsdown",
     "test": "vitest",
     "typecheck": "tsc",
     "release": "nr build && bumpp && npm publish --access public --tag beta",
@@ -58,6 +59,7 @@
     "@huberyyang/todo-scripts": "^1.0.8",
     "@types/cross-spawn": "^6.0.6",
     "@types/node": "^20.19.0 || >=22.12.0",
+    "bumpp": "^10.4.1",
     "cross-spawn": "^7.0.6",
     "eslint": "^9.39.2",
     "husky": "^9.1.7",

@@ -13,7 +13,6 @@ interface Options {
   help?: boolean
   overwrite?: boolean
   immediate?: boolean
-  interactive?: boolean
 }
 
 const spin = prompts.spinner()
