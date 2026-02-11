@@ -10,7 +10,5 @@ export default antfu({
     '**/node_modules/**',
     'template-*',
     '**/dist/**',
-    '.git',
-    '.github/**',
   ],
 })
