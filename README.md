@@ -1,9 +1,9 @@
 <h1 align="center">🚀 create-todo-vue</h1>
 
 <div align="center">
-  <a href="https://github.com/Hub-yang/create-todo-vue"><img src="https://img.shields.io/github/package-json/v/Hub-yang/create-todo-vue" alt="github version"></a>
-  <a href="https://github.com/Hub-yang/create-todo-vue"><img src="https://img.shields.io/static/v1?label=%F0%9F%8C%9F&message=If%20Useful&style=style=flat&color=BC4E99" alt="star badge"/></a>
-  <a href="https://opensource.org/license/MIT"><img src="https://img.shields.io/npm/l/express" alt="license"/></a>
+  <a href="https://github.com/Hub-yang/create-todo-vue"><img src="https://img.shields.io/github/package-json/v/Hub-yang/create-todo-vue?style=flat-square&label=%20&color=%23000" alt="github version"></a>
+  <a href="https://github.com/Hub-yang/create-todo-vue"><img src="https://img.shields.io/static/v1?label=%F0%9F%8C%9F&message=If%20Useful&style=flat-square&color=BC4E99" alt="star badge"/></a>
+  <a href="https://opensource.org/license/MIT"><img src="https://img.shields.io/npm/l/express?style=flat-square" alt="license"/></a>
 </div>
 
 > [!WARNING]
