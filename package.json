@@ -1,7 +1,7 @@
 {
   "name": "@huberyyang/create-todo-vue",
   "type": "module",
-  "version": "1.0.0-beta.2",
+  "version": "1.0.0",
   "packageManager": "pnpm@10.30.2",
   "description": "💡 create vue projects with awesome templates",
   "author": "HuberyYang",
@@ -29,6 +29,10 @@
   "files": [
     "bin",
     "dist",
+    "template-lit",
+    "template-lit-ts",
+    "template-vanilla",
+    "template-vanilla-ts",
     "template-vitesse-base",
     "template-vitesse-lite",
     "template-vue",
@@ -44,7 +48,7 @@
     "build:prod": "nr typecheck && nr lint:fix && tsdown",
     "test": "vitest",
     "typecheck": "tsc",
-    "release": "nr build && bumpp && npm publish --access public --tag beta",
+    "release": "nr build && bumpp && npm publish --access public",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
     "taze": "npx taze major -r",
