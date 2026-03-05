@@ -90,5 +90,6 @@
     "scss",
     "pcss",
     "postcss"
-  ]
+  ],
+  "vitest.disableWorkspaceWarning": true
 }

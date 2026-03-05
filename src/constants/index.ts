@@ -16,7 +16,7 @@ interface Framework {
   variants?: FrameworkVariant[]
 }
 
-const { green, yellow, blue } = colors
+const { green, yellow, blue, redBright, greenBright } = colors
 
 export const HELP_MESSAGE = `\
 用法: @huberyyang/create-todo-vue [参数]... [目录]
@@ -30,14 +30,31 @@ export const HELP_MESSAGE = `\
   --overwrite                           是否覆盖创建
 
 可用模板:
-${green ('vue                       vue         ')}
-${green ('vue-ts                    vue-ts      ')}
-${green ('vitesse-base              vitesse-base')}
-${green ('vitesse-lite              vitesse-lite')}`
+${yellow('vanilla-ts                vanilla     ')}
+${green('vue-ts                     vue         ')}
+${green ('vitesse-lite              vitesse-base')}
+${redBright('lit-ts                 lit         ')}`
 
 export const DEFAULTE_TARGETDIR = 'vue-project'
 
 export const FRAMEWORKS: Framework[] = [
+  {
+    name: 'vanilla',
+    display: 'Vanilla',
+    color: yellow,
+    variants: [
+      {
+        name: 'vanilla-ts',
+        display: 'TypeScript',
+        color: blue,
+      },
+      {
+        name: 'vanilla',
+        display: 'JavaScript',
+        color: yellow,
+      },
+    ],
+  },
   {
     name: 'vue',
     display: 'Vue',
@@ -59,6 +76,20 @@ export const FRAMEWORKS: Framework[] = [
         color: green,
         customCommand: 'npm create vue@latest TARGET_DIR',
       },
+      {
+        name: 'custom-nuxt',
+        display: 'Nuxt ↗',
+        link: 'https://nuxt.com',
+        color: greenBright,
+        customCommand: 'npm exec nuxi init TARGET_DIR',
+      },
+      {
+        name: 'custom-vike-vue',
+        display: 'Vike ↗',
+        link: 'https://vike.dev',
+        color: greenBright,
+        customCommand: 'npm create -- vike@latest --vue TARGET_DIR',
+      },
     ],
   },
   {
@@ -75,6 +106,23 @@ export const FRAMEWORKS: Framework[] = [
         name: 'vitesse-lite',
         display: 'vitesse-lite',
         color: green,
+      },
+    ],
+  },
+  {
+    name: 'lit',
+    display: 'Lit',
+    color: redBright,
+    variants: [
+      {
+        name: 'lit-ts',
+        display: 'TypeScript',
+        color: blue,
+      },
+      {
+        name: 'lit',
+        display: 'JavaScript',
+        color: yellow,
       },
     ],
   },
