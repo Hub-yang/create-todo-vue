@@ -1,0 +1,37 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":separateMajorReleases",
+    ":combinePatchMinorReleases"
+  ],
+  "timezone": "Asia/Shanghai",
+  "schedule": ["after 10pm every Sunday and before 5am every Monday"],
+  "packageRules": [
+    {
+      "description": "自动更新 package.json 中的 packageManager 字段 (pnpm)",
+      "matchDepTypes": ["packageManager"],
+      "matchPackageNames": ["pnpm"],
+      "enabled": true,
+      "groupName": "pnpm version",
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true,
+      "labels": ["dependencies", "pnpm"]
+    },
+    {
+      "description": "针对普通依赖项的配置",
+      "matchPackagePatterns": ["*"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "all non-major dependencies",
+      "groupSlug": "all-minor-patch",
+      "labels": ["dependencies"]
+    }
+  ],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true,
+    "schedule": ["before 5am on Monday"]
+  },
+  "postUpdateOptions": ["pnpmDedupe"]
+}
