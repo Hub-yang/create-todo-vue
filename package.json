@@ -43,11 +43,11 @@
     "dev": "tsdown --watch",
     "preview": "nr build && node ./bin/index.js",
     "build": "tsdown",
-    "build:prod": "npm-run-all2 typecheck lint:fix build",
-    "release": "npm-run-all2 build:prod publish",
-    "test": "vitest",
+    "build:prod": "npm-run-all2 typecheck lint:fix test build",
+    "release": "npm-run-all2 build:prod && bumpp && npm publish",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "typecheck": "tsc",
-    "publish": "bumpp && npm publish",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
     "taze": "npx taze major -r",
@@ -72,8 +72,5 @@
     "picocolors": "^1.1.1",
     "tsdown": "^0.20.3",
     "vitest": "^4.0.18"
-  },
-  "lint-staged": {
-    "*": "eslint --fix"
   }
 }

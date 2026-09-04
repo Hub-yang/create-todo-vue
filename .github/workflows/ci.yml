@@ -1,0 +1,37 @@
+name: CI
+
+# Runs the same four checks as the release gate, but on every push and PR, so a
+# failure surfaces when it is introduced instead of when a release is attempted.
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      # No `ref` and no `fetch-depth: 0` here, unlike release.yml: this job
+      # checks the current head and needs no tag history.
+      - uses: actions/checkout@v7
+
+      # Must come before setup-node, otherwise `cache: pnpm` cannot find pnpm.
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Kept in step with release.yml's gate. `lint`, not `lint:fix`.
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm build
