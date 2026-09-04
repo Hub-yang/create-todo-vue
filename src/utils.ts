@@ -14,6 +14,48 @@ interface PkgInfo {
 }
 
 /**
+ * 从起始目录逐级向上查找 package.json
+ *
+ * 不写死相对层级，是因为 CLI 在开发态（src/）和发布态（dist/）下与 package.json
+ * 的相对位置不同，写死会在其中一态静默读到错误的文件。
+ * @param {string} startDir - 起点目录
+ * @returns 命中的绝对路径；一路到文件系统根都没有则返回 undefined
+ */
+export function findPackageJson(startDir: string): string | undefined {
+  let dir = path.resolve(startDir)
+  while (true) {
+    const candidate = path.join(dir, 'package.json')
+    if (fs.existsSync(candidate)) {
+      return candidate
+    }
+    const parent = path.dirname(dir)
+    // 到达文件系统根时 dirname 会返回自身，以此终止
+    if (parent === dir) {
+      return undefined
+    }
+    dir = parent
+  }
+}
+
+/**
+ * 读取自身版本号
+ * @param {string} startDir - 查找 package.json 的起点
+ * @returns 版本号；读不到时返回 'unknown'（查版本不该让 CLI 崩掉）
+ */
+export function getVersion(startDir: string): string {
+  const pkgPath = findPackageJson(startDir)
+  if (!pkgPath) {
+    return 'unknown'
+  }
+  try {
+    return JSON.parse(fs.readFileSync(pkgPath, 'utf-8')).version ?? 'unknown'
+  }
+  catch {
+    return 'unknown'
+  }
+}
+
+/**
  * 移除末尾'/'
  */
 export function formatTargetDir(targetDir: string) {

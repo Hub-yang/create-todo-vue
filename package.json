@@ -33,8 +33,6 @@
     "template-lit-ts",
     "template-vanilla",
     "template-vanilla-ts",
-    "template-vitesse-base",
-    "template-vitesse-lite",
     "template-vue",
     "template-vue-ts"
   ],
@@ -76,6 +74,6 @@
     "vitest": "^4.0.18"
   },
   "lint-staged": {
-    "*": "eslint . --fix"
+    "*": "eslint --fix"
   }
 }

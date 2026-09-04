@@ -25,15 +25,15 @@ export const HELP_MESSAGE = `\
 
 参数:
   -h, --help                            查看帮助
+  -v, --version                         查看版本号
   -t, --template                        指定模板
   -i, --immediate                       创建后立即安装依赖
   --overwrite                           是否覆盖创建
 
 可用模板:
-${yellow('vanilla-ts                vanilla     ')}
-${green('vue-ts                     vue         ')}
-${green ('vitesse-lite              vitesse-base')}
-${redBright('lit-ts                 lit         ')}`
+${yellow('vanilla-ts    vanilla')}
+${green('vue-ts        vue')}
+${redBright('lit-ts        lit')}`
 
 export const DEFAULTE_TARGETDIR = 'vue-project'
 
@@ -89,23 +89,6 @@ export const FRAMEWORKS: Framework[] = [
         link: 'https://vike.dev',
         color: greenBright,
         customCommand: 'npm create -- vike@latest --vue TARGET_DIR',
-      },
-    ],
-  },
-  {
-    name: 'vitesse',
-    display: 'vitesse',
-    color: green,
-    variants: [
-      {
-        name: 'vitesse-base',
-        display: 'vitesse-base',
-        color: green,
-      },
-      {
-        name: 'vitesse-lite',
-        display: 'vitesse-lite',
-        color: green,
       },
     ],
   },

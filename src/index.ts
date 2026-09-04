@@ -6,11 +6,12 @@ import * as prompts from '@clack/prompts'
 import spawn from 'cross-spawn'
 import mri from 'mri'
 import { DEFAULTE_TARGETDIR, FRAMEWORKS, HELP_MESSAGE, RENAME_FILES, TEMPLATES } from './constants'
-import { cancel, copy, emptyDir, formatTargetDir, getFullCustomCommand, getInstallCommand, getLabel, install, isEmpty, isValidPackageName, pkgFromUserAgent, toValidPackageName } from './utils'
+import { cancel, copy, emptyDir, formatTargetDir, getFullCustomCommand, getInstallCommand, getLabel, getVersion, install, isEmpty, isValidPackageName, pkgFromUserAgent, toValidPackageName } from './utils'
 
 interface Options {
   template?: string
   help?: boolean
+  version?: boolean
   overwrite?: boolean
   immediate?: boolean
 }
@@ -19,8 +20,8 @@ const spin = prompts.spinner()
 const cwd = process.cwd()
 
 const argv = mri<Options>(process.argv.slice(2), {
-  boolean: ['help', 'overwrite', 'immediate'],
-  alias: { h: 'help', t: 'template', i: 'immediate' },
+  boolean: ['help', 'version', 'overwrite', 'immediate'],
+  alias: { h: 'help', v: 'version', t: 'template', i: 'immediate' },
   string: ['template'],
 })
 
@@ -33,8 +34,16 @@ async function init() {
   const help = argv.help
   if (help) {
     console.log(HELP_MESSAGE)
-    return false
+    return
   }
+
+  if (argv.version) {
+    // 以 dist/index.js（或开发态的 src/index.ts）为起点向上找 package.json
+    console.log(getVersion(path.dirname(fileURLToPath(import.meta.url))))
+    return
+  }
+
+  prompts.intro('create-todo-vue')
 
   const pkgInfo = pkgFromUserAgent(process.env.npm_config_user_agent)
 
@@ -243,4 +252,14 @@ async function init() {
   prompts.log.success('程序结束')
 }
 
-init()
+init().catch((e) => {
+  // spinner 若仍在转，先收掉，否则报错信息会被它的重绘覆盖。
+  // 未 start 过时调用 error() 也是安全的（已实测），所以无需额外判状态。
+  spin.error('创建失败')
+  prompts.log.error(e instanceof Error ? e.message : String(e))
+  // 原始栈对定位仍有价值，但不该是用户看到的第一屏
+  if (e instanceof Error && e.stack) {
+    console.error(e.stack)
+  }
+  process.exit(1)
+})

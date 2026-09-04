@@ -46,10 +46,17 @@ npm create @huberyyang/todo-vue vue-project --overwrite -t vue-ts -i
 
 #### 🟢 当前可用模板
 
-- `vue`
-- `vue-ts`
-- `vitesse-base`
-- `vitesse-lite`
+内置模板（`-t` 可直接指定）：
+
+- `vanilla` / `vanilla-ts`
+- `vue` / `vue-ts`
+- `lit` / `lit-ts`
+
+交互式选择 Vue 时，还可转交给以下上游脚手架：
+
+- `Official Vue Starter` → `create-vue`
+- `Nuxt` → `nuxi init`
+- `Vike` → `create vike --vue`
 
 ### 📜 许可证 (License)
 
