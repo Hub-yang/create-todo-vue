@@ -70,9 +70,11 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
-      # Explicit, unlike todo-scripts where `test:e2e`'s globalSetup builds dist/.
-      # Without an E2E suite here (CTV-08), nothing else proves the build works.
+      # `test:e2e`'s globalSetup builds dist/ too, but keeping build as its own
+      # step makes a build failure name itself instead of surfacing as a
+      # confusing E2E setup error.
       - run: pnpm build
+      - run: pnpm test:e2e
 
       # Renders the commits between the two tags into the Release body, following
       # conventional commits. Pinned to a major: an unpinned dlx would let an

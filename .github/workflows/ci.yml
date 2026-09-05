@@ -31,7 +31,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       # Kept in step with release.yml's gate. `lint`, not `lint:fix`.
+      # test:e2e spawns the real CLI into temp dirs; it never installs anything.
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm build
+      - run: pnpm test:e2e
