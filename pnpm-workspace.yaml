@@ -3,13 +3,10 @@
 
 # 以下三条由 @antfu/eslint-config 9 带的 eslint-plugin-pnpm 强制要求，
 # 缺任何一条 `pnpm lint` 都会报 pnpm/yaml-enforce-settings。
-# trustPolicy 会让每次 install 额外做一轮 lockfile 供应链校验（约 18s）。
+# trustPolicy 会让每次 install 额外做一轮 lockfile 供应链校验（CI 实测约 6.6s）。
 minimumReleaseAgeExcludePrune: true
 trustPolicy: no-downgrade
 shellEmulator: true
-# 原本在 .npmrc 里写作 manage-package-manager-versions=true。npm/npx 每次
-# 运行都会对这个它不认识的键报 "Unknown project config" 警告，搬到这里就没了。
-managePackageManagerVersions: true
 # esbuild（经 vite ← vitest 传递进来）带安装脚本。pnpm 11 把「有构建脚本
 # 未授权」从警告升级成了报错，不显式放行会让 pnpm install 退出码为 1。
 # 注意设置名：pnpm 11 用 allowBuilds 映射，取代了旧的 onlyBuiltDependencies 数组。
