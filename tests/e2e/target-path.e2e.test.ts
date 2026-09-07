@@ -63,3 +63,105 @@ describe('绝对路径的目标目录', () => {
     expect(pkg.name).toBe('my-app')
   })
 })
+
+/**
+ * CTV-20：目标名恰好撞上一个已存在的**文件**。
+ *
+ * 修复前 `fs.readdirSync` 直接抛 ENOTDIR，用户看到一段内部栈。现在按 `--overwrite`
+ * 的字面语义处理：带标志就删掉那个文件继续，不带标志则进交互菜单（非交互下退非零）。
+ */
+describe('目标名撞上已存在的文件', () => {
+  let fixture: Fixture
+  let failed = false
+
+  beforeEach(() => {
+    fixture = createFixture()
+    failed = false
+  })
+
+  afterEach((ctx) => {
+    failed = ctx.task.result?.state === 'fail'
+    fixture.cleanup(failed)
+  })
+
+  it('--overwrite 会删掉那个文件并正常生成项目', async () => {
+    fixture.write('taken', '我是文件，不是目录')
+
+    const result = await runCli(fixture, ['taken', '-t', 'vanilla', ...NON_INTERACTIVE])
+    assertOk(result, fixture)
+
+    expect(fs.statSync(path.join(fixture.dir, 'taken')).isDirectory()).toBe(true)
+    expect(fixture.exists('taken/package.json')).toBe(true)
+    expect(fixture.readJson('taken/package.json').name).toBe('taken')
+  })
+
+  it('不再抛 ENOTDIR 内部栈', async () => {
+    fixture.write('taken', '我是文件，不是目录')
+
+    const result = await runCli(fixture, ['taken', '-t', 'vanilla', '--no-immediate'])
+
+    const output = result.stdout + result.stderr
+    expect(output).not.toContain('ENOTDIR')
+    expect(output).not.toContain('readdirSync')
+  })
+
+  it('没有 --overwrite 时不动那个文件，并以非零码退出', async () => {
+    fixture.write('taken', '我是文件，不是目录')
+
+    const result = await runCli(fixture, ['taken', '-t', 'vanilla', '--no-immediate'])
+
+    expect(result.exitCode).not.toBe(0)
+    expect(fixture.read('taken')).toBe('我是文件，不是目录')
+  })
+
+  /**
+   * ⚠️ 上面那条「没有 --overwrite」的用例是**非交互**路径，它证明不了取消逻辑：
+   * clack 的 prompt 在 stdin 不可读时 promise 永不 settle，`await` 之后一行都不执行，
+   * 所以文件没被动、退出码为 1，跟菜单里写了什么毫无关系（实测：把取消分支整段删掉
+   * 它照样绿）。下面两条才真的走进菜单——靠 respondAfterStdout 往管道里喂按键。
+   */
+  const MENU = '请选择如何继续'
+
+  it('交互式选「取消操作」时，文件原封不动并以非零码退出', async () => {
+    fixture.write('taken', '我是文件，不是目录')
+
+    const result = await runCli(
+      fixture,
+      ['taken', '-t', 'vanilla', '--no-immediate'],
+      // 菜单默认高亮第一项，直接回车即选中「取消操作」
+      { respondAfterStdout: { after: MENU, send: '\r' } },
+    )
+
+    expect(result.exitCode).toBe(1)
+    expect(result.stdout).toContain('操作已取消')
+    expect(fixture.read('taken')).toBe('我是文件，不是目录')
+  })
+
+  it('交互式选「删除该文件并继续」时，文件被替换成项目目录', async () => {
+    fixture.write('taken', '我是文件，不是目录')
+
+    const result = await runCli(
+      fixture,
+      ['taken', '-t', 'vanilla', '--no-immediate'],
+      // 下移一项再回车，选中「删除该文件并继续」
+      { respondAfterStdout: { after: MENU, send: '\u001B[B\r' } },
+    )
+    assertOk(result, fixture)
+
+    expect(fs.statSync(path.join(fixture.dir, 'taken')).isDirectory()).toBe(true)
+    expect(fixture.exists('taken/package.json')).toBe(true)
+  })
+
+  it('文件目标的菜单不提供「忽略」——那个选项在文件上物理不可行', async () => {
+    fixture.write('taken', '我是文件，不是目录')
+
+    const result = await runCli(
+      fixture,
+      ['taken', '-t', 'vanilla', '--no-immediate'],
+      { respondAfterStdout: { after: MENU, send: '\r' } },
+    )
+
+    expect(result.stdout).toContain('删除该文件并继续')
+    expect(result.stdout).not.toContain('忽略文件并继续')
+  })
+})

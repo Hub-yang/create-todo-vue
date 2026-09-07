@@ -83,11 +83,20 @@ describe('命令行基础行为', () => {
     expect(fixture.exists('x')).toBe(false)
   })
 
-  // CTV-02 的回归钉子：这条路径以前是 unhandled rejection，首屏是 node 内部栈。
-  it('目标名是一个已存在的文件时，给出可读报错并以非零码退出', async () => {
+  /**
+   * CTV-02 的回归钉子：抛出来的异常必须被顶层兜住、首屏是 clack 格式的一行，
+   * 而不是 unhandled rejection 的 node 内部栈。
+   *
+   * ⚠️ 这条用例的场景是**特意挑的**。它原本用的是「目标名就是一个已存在的文件」，
+   * 而 CTV-20 把那条路径改成了给人话 + 正常退出，于是它不再抛异常——再留在那儿
+   * 就等于悄悄丢掉 CTV-02 的唯一 E2E 触发点。换成「父级路径段是个文件」：
+   * `taken/sub` 里 `taken` 是文件，CTV-20 的判断认定 `taken/sub` 不存在（确实不存在），
+   * 一路走到 `mkdirSync` 才炸 ENOTDIR，兜底照样要接住它。
+   */
+  it('创建目录的父级路径段是个文件时，给出可读报错并以非零码退出', async () => {
     fixture.write('taken', '我是文件，不是目录')
 
-    const result = await runCli(fixture, ['taken', '-t', 'vue-ts', '--overwrite', '--no-immediate'])
+    const result = await runCli(fixture, ['taken/sub', '-t', 'vue-ts', '--overwrite', '--no-immediate'])
 
     expect(result.exitCode).toBe(1)
     // 首屏是 clack 格式的一行错误信息，不是 node 内部栈

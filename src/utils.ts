@@ -80,6 +80,21 @@ export function cancel() {
 }
 
 /**
+ * 分辨一个路径是「不存在 / 目录 / 其它（文件、软链到文件等）」
+ *
+ * `isEmpty` 只回答空不空，撞上一个已存在的**文件**时 `fs.readdirSync` 会直接抛
+ * ENOTDIR。调用点得先能分辨形态，才谈得上给出人话（CTV-20）。
+ *
+ * 用 `statSync` 而非 `lstatSync`：跟随符号链接，指向目录的软链应当被当作目录。
+ */
+export function pathKind(target: string): 'missing' | 'dir' | 'file' {
+  if (!fs.existsSync(target)) {
+    return 'missing'
+  }
+  return fs.statSync(target).isDirectory() ? 'dir' : 'file'
+}
+
+/**
  * 检测目录是否为空
  */
 export function isEmpty(path: string) {

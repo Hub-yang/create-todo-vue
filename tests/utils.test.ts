@@ -17,6 +17,7 @@ import {
   getVersion,
   isEmpty,
   isValidPackageName,
+  pathKind,
   pkgFromUserAgent,
   toValidPackageName,
 } from '../src/utils'
@@ -261,6 +262,44 @@ describe('isEmpty', () => {
     // 名字长得像但不是 .git，不能被误判
     fs.writeFileSync(path.join(tmp(), '.gitignore'), '')
     expect(isEmpty(tmp())).toBe(false)
+  })
+})
+
+/**
+ * CTV-20：`isEmpty` 只回答「空不空」，回答不了「是不是目录」。
+ *
+ * 目标名恰好撞上一个已存在的**文件**时，`fs.readdirSync` 直接抛 ENOTDIR，
+ * 用户看到的是一段没有意义的内部栈。调用点需要先能分辨三种形态，才谈得上给人话。
+ */
+describe('pathKind', () => {
+  const tmp = useTempDir()
+
+  it('不存在的路径是 missing', () => {
+    expect(pathKind(path.join(tmp(), 'nope'))).toBe('missing')
+  })
+
+  it('目录是 dir', () => {
+    expect(pathKind(tmp())).toBe('dir')
+  })
+
+  it('普通文件是 file', () => {
+    const target = path.join(tmp(), 'taken')
+    fs.writeFileSync(target, '我是文件，不是目录')
+    expect(pathKind(target)).toBe('file')
+  })
+
+  it('空目录也是 dir——不能跟 missing 混为一谈', () => {
+    const target = path.join(tmp(), 'empty')
+    fs.mkdirSync(target)
+    expect(pathKind(target)).toBe('dir')
+  })
+
+  it('指向目录的软链算 dir——跟随符号链接，而不是把它自己当成一个文件', () => {
+    const real = path.join(tmp(), 'real')
+    const link = path.join(tmp(), 'link')
+    fs.mkdirSync(real)
+    fs.symlinkSync(real, link)
+    expect(pathKind(link)).toBe('dir')
   })
 })
 

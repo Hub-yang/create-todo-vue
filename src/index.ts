@@ -16,7 +16,7 @@ import {
   resolveArgTemplate,
 } from './plan'
 import { scaffoldTemplate } from './scaffold'
-import { cancel, emptyDir, formatTargetDir, getFullCustomCommand, getLabel, getVersion, install, isEmpty, isValidPackageName, pkgFromUserAgent, toValidPackageName } from './utils'
+import { cancel, emptyDir, formatTargetDir, getFullCustomCommand, getLabel, getVersion, install, isEmpty, isValidPackageName, pathKind, pkgFromUserAgent, toValidPackageName } from './utils'
 
 interface Options {
   template?: string
@@ -143,8 +143,43 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
    */
   const root = path.resolve(cwd, targetDir)
 
-  // 2.如果目录存在且不为空，则进行处理
-  if (fs.existsSync(root) && !isEmpty(root)) {
+  const targetKind = pathKind(root)
+
+  // 2.目标已存在时的处理。文件与目录是两套完全不同的选项，不能共用一个菜单：
+  // 「忽略文件并继续」在文件目标下物理上做不到——没法把一棵目录树写进一个文件路径，
+  // 硬走下去 copy() 一样会炸（CTV-20）。
+  if (targetKind === 'file') {
+    // --overwrite 的字面语义就是「删了重来」，撞上文件时直接删，不再追问
+    let removeExistingFile = Boolean(argOverwrite)
+
+    if (!removeExistingFile) {
+      const res = await prompts.select({
+        message: `${targetDir} 已存在且是一个文件，请选择如何继续`,
+        options: [
+          {
+            label: '取消操作',
+            value: 'no',
+          },
+          {
+            label: '删除该文件并继续',
+            value: 'yes',
+          },
+        ],
+      })
+      if (prompts.isCancel(res)) {
+        return cancelled()
+      }
+      removeExistingFile = res === 'yes'
+    }
+
+    if (!removeExistingFile) {
+      return cancelled()
+    }
+
+    // 不能用 emptyDir()：它内部同样是 readdirSync，对文件照抛 ENOTDIR
+    fs.rmSync(root, { force: true })
+  }
+  else if (targetKind === 'dir' && !isEmpty(root)) {
     let overwrite: 'yes' | 'no' | 'ignore' | undefined = argOverwrite ? 'yes' : undefined
 
     if (!overwrite) {

@@ -32,6 +32,17 @@ export interface RunCliOptions {
    * 事件循环就不为空，进程会一直挂着直到超时。
    */
   cancelAfterStdout?: string
+  /**
+   * 在选择器里**真的选中某一项**：等 stdout 首次出现 `after` 后写入 `send` 并关闭 stdin。
+   *
+   * clack 的 select 在管道（非 TTY）下同样靠 readline 的 keypress 事件工作——实测确认。
+   * 常用字节：`\r` 回车确认当前高亮项（默认是第一项），`\u001B[B` 下移一项。
+   *
+   * 没有这个能力时，「用户主动选了某个选项」那半边分支在 E2E 里是**不可达**的：
+   * 非交互下 clack 的 promise 永不 settle，`await` 之后一行都不执行，于是任何
+   * 「选了取消就不该动文件」之类的断言都会假绿——它们通过与那段代码毫无关系。
+   */
+  respondAfterStdout?: { after: string, send: string }
 }
 
 /**
@@ -95,7 +106,11 @@ export function runCli(
   options: RunCliOptions = {},
 ): Promise<CliResult> {
   return new Promise((resolve, reject) => {
-    const wantsCancel = options.cancelAfterStdout !== undefined
+    // 两个选项共用同一套「等输出出现再喂字节」的机制，只是喂的内容不同
+    const response = options.cancelAfterStdout !== undefined
+      ? { after: options.cancelAfterStdout, send: '\u0003' }
+      : options.respondAfterStdout
+    const wantsCancel = response !== undefined
 
     const child = spawn(process.execPath, [BIN_PATH, ...args], {
       cwd: fixture.dir,
@@ -122,13 +137,13 @@ export function runCli(
       if (!wantsCancel || cancelSent) {
         return
       }
-      if (!stripVTControlCharacters(stdout).includes(options.cancelAfterStdout!)) {
+      if (!stripVTControlCharacters(stdout).includes(response!.after)) {
         return
       }
       cancelSent = true
       // \u0003 就是 Ctrl+C 的字节。clack 靠 readline 的 keypress 事件识别它，
       // 管道下（非 TTY）同样有效——实测确认过。
-      child.stdin!.write('\u0003')
+      child.stdin!.write(response!.send)
       // 必须收掉：取消分支会跑完并给出退出码，但 stdin 管道只要还开着事件循环就不空，
       // 进程会一直挂到超时
       child.stdin!.end()
