@@ -6,7 +6,15 @@ import * as prompts from '@clack/prompts'
 import spawn from 'cross-spawn'
 import mri from 'mri'
 import { DEFAULTE_TARGETDIR, FRAMEWORKS, HELP_MESSAGE, RENAME_FILES, TEMPLATES } from './constants'
-import { cancel, copy, emptyDir, formatTargetDir, getFullCustomCommand, getInstallCommand, getLabel, getVersion, install, isEmpty, isValidPackageName, pkgFromUserAgent, toValidPackageName } from './utils'
+import {
+  buildCustomCommandArgs,
+  buildDoneMessage,
+  derivePackageName,
+  findVariantCommand,
+  resolveArgTemplate,
+} from './plan'
+import { scaffoldTemplate } from './scaffold'
+import { cancel, emptyDir, formatTargetDir, getFullCustomCommand, getLabel, getVersion, install, isEmpty, isValidPackageName, pkgFromUserAgent, toValidPackageName } from './utils'
 
 interface Options {
   template?: string
@@ -16,16 +24,45 @@ interface Options {
   immediate?: boolean
 }
 
+/**
+ * 下面两个常量必须在**本文件**里算，不能挪进任何子模块。
+ *
+ * `path.resolve(<本文件路径>, '../..')` 的结果取决于本文件在第几层：
+ * `dist/index.js` 与 `src/index.ts` 都在仓库根下一层，所以两者都解析到仓库根；
+ * 一旦挪进 `src/xxx/yyy.ts`，开发态会解析到 `src/` 而产物态仍解析到仓库根，
+ * 于是模板目录静默指向错误位置，**且没有任何编译期报错**。
+ *
+ * 需要它们的下层模块一律靠参数接收，不自己读 `import.meta.url`。
+ */
+const ENTRY_FILE = fileURLToPath(import.meta.url)
+/** 向上查找 package.json 的起点，供 `-v` 读版本号 */
+const ENTRY_DIR = path.dirname(ENTRY_FILE)
+/** `template-*` 所在的目录，即仓库根 / 已安装包的根 */
+const PACKAGE_ROOT = path.resolve(ENTRY_FILE, '../..')
+
+/**
+ * spinner 保持模块级：`runCli()` 的兜底需要够得着它，才能在报错前把还在转的
+ * spinner 收掉。`prompts.spinner()` 创建时不写终端，副作用要到 `.start()` 才发生，
+ * 所以它不妨碍本模块被测试导入。
+ */
 const spin = prompts.spinner()
-const cwd = process.cwd()
 
-const argv = mri<Options>(process.argv.slice(2), {
-  boolean: ['help', 'version', 'overwrite', 'immediate'],
-  alias: { h: 'help', v: 'version', t: 'template', i: 'immediate' },
-  string: ['template'],
-})
+/**
+ * CLI 主流程。
+ *
+ * 只做编排与交互，**异常一律往外抛**——兜底在 `runCli()` 里。这样测试可以导入并
+ * 调用本函数，而不会被 `process.exit` 连带干掉整个测试进程。
+ * @param {string[]} argvInput - 命令行参数（不含 node 与脚本路径本身）
+ */
+export async function main(argvInput: string[] = process.argv.slice(2)): Promise<void> {
+  const cwd = process.cwd()
 
-async function init() {
+  const argv = mri<Options>(argvInput, {
+    boolean: ['help', 'version', 'overwrite', 'immediate'],
+    alias: { h: 'help', v: 'version', t: 'template', i: 'immediate' },
+    string: ['template'],
+  })
+
   const argTargetDir = argv._[0] ? formatTargetDir(String(argv._[0])) : undefined
   const argOverwrite = argv.overwrite
   const argTemplate = argv.template
@@ -38,8 +75,7 @@ async function init() {
   }
 
   if (argv.version) {
-    // 以 dist/index.js（或开发态的 src/index.ts）为起点向上找 package.json
-    console.log(getVersion(path.dirname(fileURLToPath(import.meta.url))))
+    console.log(getVersion(ENTRY_DIR))
     return
   }
 
@@ -103,8 +139,9 @@ async function init() {
 
   // 3. 获取包名
   // 取目标目录名作为默认package.json name
-  let packageName = path.basename(path.resolve(targetDir))
-  if (!isValidPackageName(packageName)) {
+  const derived = derivePackageName(targetDir, cwd)
+  let packageName = derived.name
+  if (derived.needsPrompt) {
     const packageNameResult = await prompts.text({
       message: '请输入package.json name',
       defaultValue: toValidPackageName(packageName),
@@ -121,12 +158,11 @@ async function init() {
   }
 
   // 4. 选择框架
-  let template = argTemplate
-  let hasInvalidArgTemplate = false
-  if (argTemplate && !TEMPLATES.includes(argTemplate)) {
-    template = undefined
-    hasInvalidArgTemplate = true
-  }
+  const { template: argResolvedTemplate, invalid: hasInvalidArgTemplate } = resolveArgTemplate(
+    argTemplate,
+    TEMPLATES,
+  )
+  let template = argResolvedTemplate
   if (!template) {
     const framework = await prompts.select({
       message: hasInvalidArgTemplate
@@ -167,16 +203,13 @@ async function init() {
 
   const pkgManager = pkgInfo?.name || 'npm'
   const root = path.join(cwd, targetDir)
-  // 如果已选模板存在安装指令，则立即执行
-  const { customCommand } = FRAMEWORKS
-    .flatMap(f => f.variants?.length ? f.variants : f)
-    .find(v => v.name === template) ?? {}
+
+  // 如果已选模板存在安装指令，则转交给上游脚手架，完全不走内置模板
+  const customCommand = findVariantCommand(FRAMEWORKS, template)
   if (customCommand) {
     const fullCustomCommand = getFullCustomCommand(customCommand, pkgInfo)
-    const [command, ...args] = fullCustomCommand.split(' ')
-    // 将TARGET_DIR替换为targetDir
-    const replacedArgs = args.map(a => a.replace('TARGET_DIR', targetDir))
-    const { status } = spawn.sync(command, replacedArgs, {
+    const { command, args } = buildCustomCommandArgs(fullCustomCommand, targetDir)
+    const { status } = spawn.sync(command, args, {
       stdio: 'inherit',
     })
     process.exit(status ?? 0)
@@ -184,43 +217,12 @@ async function init() {
 
   // 不存在安装指令，则使用内置模板安装
   spin.start(`正在${root}中创建模板`)
-  fs.mkdirSync(root, { recursive: true })
-  // 获取内置模板目录
-  const templateDir = path.resolve(
-    fileURLToPath(import.meta.url),
-    '../..',
-    `template-${template}`,
-  )
-
-  function write(file: string, content?: string) {
-    const targetPath = path.join(root, RENAME_FILES[file] ?? file)
-    if (content) {
-      fs.writeFileSync(targetPath, content)
-    }
-    else if (file === 'index.html') {
-      const templatePath = path.join(templateDir, file)
-      const templateContent = fs.readFileSync(templatePath, 'utf-8')
-      const updateComtent = templateContent.replace(
-        /<title>.*?<\/title>/,
-        `<title>${packageName}</title>`,
-      )
-      fs.writeFileSync(targetPath, updateComtent)
-    }
-    else {
-      copy(path.join(templateDir, file), targetPath)
-    }
-  }
-
-  const files = fs.readdirSync(templateDir)
-  for (const file of files.filter(f => f !== 'package.json')) {
-    write(file)
-  }
-
-  const pkg = JSON.parse(
-    fs.readFileSync(path.join(templateDir, `package.json`), 'utf-8'),
-  )
-  pkg.name = packageName
-  write('package.json', `${JSON.stringify(pkg, null, 2)}\n`)
+  scaffoldTemplate({
+    templateDir: path.resolve(PACKAGE_ROOT, `template-${template}`),
+    root,
+    packageName,
+    renameFiles: RENAME_FILES,
+  })
   spin.stop('模板创建成功')
 
   // 5. 询问是否立即安装
@@ -239,27 +241,29 @@ async function init() {
     install(root, pkgManager)
   }
   else {
-    let doneMessage = ''
-    const cdProjectName = path.relative(cwd, root)
-    doneMessage += '创建完成，请执行：'
-    if (cwd !== root) {
-      doneMessage += `\n cd ${cdProjectName.includes(' ') ? `"${cdProjectName}"` : cdProjectName}`
-    }
-    doneMessage += `\n ${getInstallCommand(pkgManager).join(' ')}`
-    prompts.outro(doneMessage)
+    prompts.outro(buildDoneMessage(cwd, root, pkgManager))
   }
 
   prompts.log.success('程序结束')
 }
 
-init().catch((e) => {
-  // spinner 若仍在转，先收掉，否则报错信息会被它的重绘覆盖。
-  // 未 start 过时调用 error() 也是安全的（已实测），所以无需额外判状态。
-  spin.error('创建失败')
-  prompts.log.error(e instanceof Error ? e.message : String(e))
-  // 原始栈对定位仍有价值，但不该是用户看到的第一屏
-  if (e instanceof Error && e.stack) {
-    console.error(e.stack)
-  }
-  process.exit(1)
-})
+/**
+ * 供 `bin/index.js` 调用的入口：跑主流程并兜住任何异常。
+ *
+ * 兜底刻意留在**被打包的产物里**而不是 `bin/index.js`（`@huberyyang/todo-scripts`
+ * 是后者那种写法）：这里用到的 `@clack/prompts` 是 devDependency，用户机器上并不存在，
+ * 未编译的 bin 里 import 它会直接崩。
+ */
+export function runCli(): Promise<void> {
+  return main().catch((e) => {
+    // spinner 若仍在转，先收掉，否则报错信息会被它的重绘覆盖。
+    // 未 start 过时调用 error() 也是安全的（已实测），所以无需额外判状态。
+    spin.error('创建失败')
+    prompts.log.error(e instanceof Error ? e.message : String(e))
+    // 原始栈对定位仍有价值，但不该是用户看到的第一屏
+    if (e instanceof Error && e.stack) {
+      console.error(e.stack)
+    }
+    process.exit(1)
+  })
+}
