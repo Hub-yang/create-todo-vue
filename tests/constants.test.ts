@@ -27,6 +27,8 @@ describe('模板注册表', () => {
       'custom-create-vue',
       'custom-nuxt',
       'custom-vike-vue',
+      'custom-vitesse',
+      'custom-vitesse-lite',
       'lit-ts',
       'lit',
     ])
@@ -37,6 +39,20 @@ describe('模板注册表', () => {
       const dir = path.join(repoRoot, `template-${name}`)
       expect(fs.existsSync(dir), `缺少目录 template-${name}`).toBe(true)
     }
+  })
+
+  // CTV-30：反向钉子。上面那条只保证「注册表里的每个内置模板都有目录」，
+  // 管不住反过来的「目录还在、注册表里已经没有它」——而删模板目录这件事
+  // 恰好只发生在这个方向上，没有这条断言就一条测试都碰不到它。
+  it('仓库里没有 FRAMEWORKS 未声明的孤儿 template-* 目录', () => {
+    const orphans = fs
+      .readdirSync(repoRoot, { withFileTypes: true })
+      .filter(e => e.isDirectory() && e.name.startsWith('template-'))
+      .map(e => e.name.slice('template-'.length))
+      .filter(name => !builtinTemplates.includes(name))
+
+    expect(orphans, '这些目录在 FRAMEWORKS 里没有对应的内置模板，应当删除或挂回注册表')
+      .toEqual([])
   })
 
   it('每个内置模板目录都带 package.json', () => {
@@ -60,20 +76,29 @@ describe('模板注册表', () => {
     }
   })
 
+  // help 里「可用模板」区块的所有词。**按空白切成词、而不是拿 HELP_MESSAGE 做子串匹配**：
+  // 模板名之间存在包含关系（`custom-vitesse` 是 `custom-vitesse-lite` 的子串，`vue` 是
+  // `vue-ts` 的子串），子串匹配会让「漏掉短的那个」全绿蒙混过去。
+  const listed = stripAnsi(HELP_MESSAGE)
+    .split('可用模板:')[1]
+    .split(/\s+/)
+    .filter(Boolean)
+
+  it('帮助信息里能抓到模板名，切词没有失灵', () => {
+    expect(listed.length).toBe(TEMPLATES.length)
+  })
+
   it('帮助信息列出的模板名都在 TEMPLATES 里', () => {
-    // 取 help 里「可用模板」区块的所有词，逐个比对
-    const listed = stripAnsi(HELP_MESSAGE)
-      .split('可用模板:')[1]
-      .split(/\s+/)
-      .filter(Boolean)
     for (const name of listed) {
       expect(TEMPLATES, `HELP_MESSAGE 列了 ${name}，但 TEMPLATES 里没有`).toContain(name)
     }
   })
 
-  it('帮助信息覆盖了全部内置模板', () => {
-    for (const name of builtinTemplates) {
-      expect(stripAnsi(HELP_MESSAGE), `HELP_MESSAGE 漏了 ${name}`).toContain(name)
+  // 覆盖全部 TEMPLATES 而不只是内置模板：`custom-*` 同样是 `-t` 真正接受的合法值
+  // （校验就是拿 TEMPLATES 比对），help 不写它们等于对用户瞒着一半的可选项。
+  it('帮助信息覆盖了全部模板，含转交上游的 custom-*', () => {
+    for (const name of TEMPLATES) {
+      expect(listed, `HELP_MESSAGE 漏了 ${name}`).toContain(name)
     }
   })
 })

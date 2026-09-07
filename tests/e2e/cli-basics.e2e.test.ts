@@ -3,11 +3,19 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { TEMPLATES } from '../../src/constants'
+import { FRAMEWORKS, TEMPLATES } from '../../src/constants'
 import { runCli } from './helpers/cli'
 import { createFixture } from './helpers/fixture'
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+
+/** 需要仓库内置 `template-*` 目录支撑的模板，即不走 customCommand 的那些 */
+const BUILTIN_TEMPLATES = new Set(
+  FRAMEWORKS
+    .flatMap(f => f.variants?.length ? f.variants : [f])
+    .filter(v => !('customCommand' in v && v.customCommand))
+    .map(v => v.name),
+)
 
 describe('命令行基础行为', () => {
   let fixture: Fixture
@@ -37,15 +45,22 @@ describe('命令行基础行为', () => {
     expect(short.stdout).toBe(long.stdout)
   })
 
-  it('帮助里列出的模板都是真实存在的内置模板', async () => {
+  // 「有目录」这个要求只对内置模板成立。CTV-30 起 help 也列出走 customCommand 的
+  // `custom-*`，它们转交给上游脚手架、仓库里本就不该有对应目录——所以按类型分开断言，
+  // 而不是放宽成「有目录的才检查」（那样内置模板漏掉目录就再也没人管了）。
+  it('帮助里列出的模板都是有效模板名，内置的那些都有真实目录', async () => {
     const result = await runCli(fixture, ['--help'])
     const listed = result.stdout.split('可用模板:')[1].split(/\s+/).filter(Boolean)
 
-    expect(listed.length).toBeGreaterThan(0)
+    expect(listed.length).toBe(TEMPLATES.length)
     for (const name of listed) {
       expect(TEMPLATES, `帮助里列了 ${name}，但 TEMPLATES 里没有`).toContain(name)
-      expect(fs.existsSync(path.join(REPO_ROOT, `template-${name}`)), `缺少 template-${name} 目录`)
-        .toBe(true)
+
+      const hasDir = fs.existsSync(path.join(REPO_ROOT, `template-${name}`))
+      if (BUILTIN_TEMPLATES.has(name))
+        expect(hasDir, `内置模板 ${name} 缺少 template-${name} 目录`).toBe(true)
+      else
+        expect(hasDir, `${name} 转交上游，不该有 template-${name} 目录`).toBe(false)
     }
   })
 
@@ -72,13 +87,36 @@ describe('命令行基础行为', () => {
     expect(fixture.tree()).toEqual([])
   })
 
-  it('无效模板名会回落到选择器并列出可选项', async () => {
+  /**
+   * ⚠️ 这条断言换过一次，理由值得留着。
+   *
+   * 原本第二句是 `expect(result.stdout).not.toContain('vitesse')`，注释写的是
+   * 「已下架的 vitesse 不该再出现在选项里」。CTV-30 把 vitesse 作为转交上游的变体
+   * 重新挂回了注册表，那个理由就此失效——**而断言仍然全绿**。实测确认它通过的真正
+   * 原因从来不是 vitesse 下架，而是「变体那一层压根没被渲染」：非交互下第一个 prompt
+   * 的 promise 永不 settle（机制见下面「取消操作的退出码」那段注释），第二层选择器
+   * 根本走不到。也就是说它一直是一条靠巧合为真、理由却写错了的绿灯。
+   *
+   * 换成直接钉住那个真实不变量：第一层选择器列的就是三个框架，一个变体都不该混进来。
+   *
+   * 期望值**刻意硬编码**，不写成 `FRAMEWORKS.map(f => f.display)`。派生版实测是弱断言：
+   * 改掉某个框架的 display 会同时改掉输出和期望，变异照样全绿（实测 `Vue` → `Vue.js`
+   * 存活）。与 `constants.test.ts` 里硬编码 TEMPLATES 的做法一致——注册表的内容该由
+   * 显式清单钉住，改注册表就该有测试红给你看。
+   */
+  it('无效模板名会回落到框架选择器，且只列出框架', async () => {
     const result = await runCli(fixture, ['x', '-t', 'nope', '--overwrite', '--no-immediate'])
 
     expect(result.timedOut).toBe(false)
     expect(result.stdout).toContain('nope不是有效的模板名')
-    // 已下架的 vitesse 不该再出现在选项里
-    expect(result.stdout).not.toContain('vitesse')
+
+    // clack 的选项行形如 `│  ● Vanilla` / `│  ○ Vue`
+    const options = result.stdout
+      .split('\n')
+      .map(line => line.match(/^│\s+[●○]\s+(\S.*)$/)?.[1].trim())
+      .filter(Boolean)
+    expect(options).toEqual(['Vanilla', 'Vue', 'Lit'])
+
     // 没选中任何东西，不该留下半成品
     expect(fixture.exists('x')).toBe(false)
   })

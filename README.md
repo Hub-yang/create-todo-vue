@@ -81,6 +81,11 @@ npm create @huberyyang/todo-vue vue-project --overwrite -t vue-ts --no-immediate
 - `Official Vue Starter` → `create-vue`
 - `Nuxt` → `nuxi init`
 - `Vike` → `create vike --vue`
+- `Vitesse` → `degit antfu-collective/vitesse`
+- `Vitesse Lite` → `degit antfu-collective/vitesse-lite`
+
+> 转交上游的模板由对方的脚手架直接生成，因此**不会**像内置模板那样把 `package.json` 的 `name`
+> 和 `index.html` 的 `<title>` 改写成你的项目名——需要的话生成后自己改一下。这几个还需要联网。
 
 ### 📜 许可证 (License)
 

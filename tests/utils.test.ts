@@ -164,11 +164,18 @@ describe('getRunCommand', () => {
 })
 
 describe('getFullCustomCommand', () => {
-  // FRAMEWORKS 里现存的三种指令形态。下面的矩阵按这三条展开，
-  // 末尾有一条守卫用例确保注册表里没有冒出第四种形态。
+  // FRAMEWORKS 里现存的五条 customCommand，落在三种指令形态上（npm create / npm exec /
+  // npm create --）。下面的矩阵按这五条逐一展开，末尾有一条守卫用例确保注册表里
+  // 不会冒出矩阵没覆盖的指令。
+  //
+  // 两条 degit 指令与 EXEC 是同一种形态，改写结果只差仓库名——刻意仍然逐条铺开而不是
+  // 只测一条：矩阵同时也是「每个包管理器拿到每条指令会跑什么」的文档，且将来两条一旦
+  // 分化（比如只给其中一条锁版本），少铺的那条就会成为盲区。
   const CREATE = 'npm create vue@latest TARGET_DIR'
   const EXEC = 'npm exec nuxi init TARGET_DIR'
   const CREATE_DASH = 'npm create -- vike@latest --vue TARGET_DIR'
+  const DEGIT = 'npm exec degit antfu-collective/vitesse TARGET_DIR'
+  const DEGIT_LITE = 'npm exec degit antfu-collective/vitesse-lite TARGET_DIR'
 
   const NPM = { name: 'npm', version: '10.9.0' }
   const PNPM = { name: 'pnpm', version: '10.30.3' }
@@ -182,42 +189,56 @@ describe('getFullCustomCommand', () => {
     ['无 pkgInfo', undefined, CREATE, 'npm create vue@latest TARGET_DIR'],
     ['无 pkgInfo', undefined, EXEC, 'npm exec nuxi init TARGET_DIR'],
     ['无 pkgInfo', undefined, CREATE_DASH, 'npm create -- vike@latest --vue TARGET_DIR'],
+    ['无 pkgInfo', undefined, DEGIT, 'npm exec degit antfu-collective/vitesse TARGET_DIR'],
+    ['无 pkgInfo', undefined, DEGIT_LITE, 'npm exec degit antfu-collective/vitesse-lite TARGET_DIR'],
 
     ['npm', NPM, CREATE, 'npm create vue@latest TARGET_DIR'],
     ['npm', NPM, EXEC, 'npm exec nuxi init TARGET_DIR'],
     ['npm', NPM, CREATE_DASH, 'npm create -- vike@latest --vue TARGET_DIR'],
+    ['npm', NPM, DEGIT, 'npm exec degit antfu-collective/vitesse TARGET_DIR'],
+    ['npm', NPM, DEGIT_LITE, 'npm exec degit antfu-collective/vitesse-lite TARGET_DIR'],
 
     // pnpm 不支持 -- 语法，所以 CREATE_DASH 那条的 -- 被吃掉
     ['pnpm', PNPM, CREATE, 'pnpm create vue@latest TARGET_DIR'],
     ['pnpm', PNPM, EXEC, 'pnpm dlx nuxi init TARGET_DIR'],
     ['pnpm', PNPM, CREATE_DASH, 'pnpm create vike@latest --vue TARGET_DIR'],
+    ['pnpm', PNPM, DEGIT, 'pnpm dlx degit antfu-collective/vitesse TARGET_DIR'],
+    ['pnpm', PNPM, DEGIT_LITE, 'pnpm dlx degit antfu-collective/vitesse-lite TARGET_DIR'],
 
     // yarn 1.x 在 create 里不认 @version，@latest 被整段剥掉；
     // 且它没有 dlx，exec 那条回落到 npm exec
     ['yarn1', YARN1, CREATE, 'yarn create vue TARGET_DIR'],
     ['yarn1', YARN1, EXEC, 'npm exec nuxi init TARGET_DIR'],
     ['yarn1', YARN1, CREATE_DASH, 'yarn create -- vike --vue TARGET_DIR'],
+    ['yarn1', YARN1, DEGIT, 'npm exec degit antfu-collective/vitesse TARGET_DIR'],
+    ['yarn1', YARN1, DEGIT_LITE, 'npm exec degit antfu-collective/vitesse-lite TARGET_DIR'],
 
     // yarn 2+ 保留 @latest，并且有 dlx
     ['yarn4', YARN4, CREATE, 'yarn create vue@latest TARGET_DIR'],
     ['yarn4', YARN4, EXEC, 'yarn dlx nuxi init TARGET_DIR'],
     ['yarn4', YARN4, CREATE_DASH, 'yarn create -- vike@latest --vue TARGET_DIR'],
+    ['yarn4', YARN4, DEGIT, 'yarn dlx degit antfu-collective/vitesse TARGET_DIR'],
+    ['yarn4', YARN4, DEGIT_LITE, 'yarn dlx degit antfu-collective/vitesse-lite TARGET_DIR'],
 
     // bun create 用的是它自己的模板集，所以必须走 bun x create-<pkg>
     ['bun', BUN, CREATE, 'bun x create-vue@latest TARGET_DIR'],
     ['bun', BUN, EXEC, 'bun x nuxi init TARGET_DIR'],
     ['bun', BUN, CREATE_DASH, 'bun x create-vike@latest --vue TARGET_DIR'],
+    ['bun', BUN, DEGIT, 'bun x degit antfu-collective/vitesse TARGET_DIR'],
+    ['bun', BUN, DEGIT_LITE, 'bun x degit antfu-collective/vitesse-lite TARGET_DIR'],
 
     // deno 需要 run -A 才有足够权限
     ['deno', DENO, CREATE, 'deno run -A npm:create-vue@latest TARGET_DIR'],
     ['deno', DENO, EXEC, 'deno run -A npm:nuxi init TARGET_DIR'],
     ['deno', DENO, CREATE_DASH, 'deno run -A npm:create-vike@latest --vue TARGET_DIR'],
+    ['deno', DENO, DEGIT, 'deno run -A npm:degit antfu-collective/vitesse TARGET_DIR'],
+    ['deno', DENO, DEGIT_LITE, 'deno run -A npm:degit antfu-collective/vitesse-lite TARGET_DIR'],
   ])('%s: %#', (_label, pkgInfo, input, expected) => {
     expect(getFullCustomCommand(input, pkgInfo)).toBe(expected)
   })
 
   it('注册表里的每条 customCommand 都被上面的矩阵覆盖', () => {
-    const covered = new Set([CREATE, EXEC, CREATE_DASH])
+    const covered = new Set([CREATE, EXEC, CREATE_DASH, DEGIT, DEGIT_LITE])
     const actual = FRAMEWORKS
       .flatMap(f => f.variants?.length ? f.variants : [f])
       .map(v => 'customCommand' in v ? v.customCommand : undefined)
