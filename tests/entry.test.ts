@@ -47,6 +47,16 @@ describe('模块入口', () => {
     expect(log.mock.calls[0][0]).toContain('可用模板:')
   })
 
+  // CTV-29：main 返回退出码，由 runCli 落到 process.exitCode 上。
+  // 两条早退分支都是正常结束，必须返回 0——否则 `--help` 会让脚本以为出错了。
+  it('--help 与 --version 都返回退出码 0', async () => {
+    const { main } = await import('../src/index')
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await expect(main(['--help'])).resolves.toBe(0)
+    await expect(main(['--version'])).resolves.toBe(0)
+  })
+
   it('-v 与 -h 的别名同样生效', async () => {
     const { main } = await import('../src/index')
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})

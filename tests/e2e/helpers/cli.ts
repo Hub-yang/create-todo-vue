@@ -22,6 +22,16 @@ export interface RunCliOptions {
   /** 叠加在白名单之上；值为 undefined 表示删除该变量 */
   env?: Record<string, string | undefined>
   timeoutMs?: number
+  /**
+   * 模拟交互式 Ctrl+C：stdin 改成管道，等 stdout 首次出现这段文本后写入 Ctrl+C 并关闭。
+   *
+   * 用「等某段输出出现」而不是「等若干毫秒」，是为了不引入时序 flaky——提示还没渲染出来
+   * 就把按键喂进去会被丢掉。
+   *
+   * 写完必须 `end()`：clack 的取消分支会跑完并给出退出码，但 stdin 管道只要还开着，
+   * 事件循环就不为空，进程会一直挂着直到超时。
+   */
+  cancelAfterStdout?: string
 }
 
 /**
@@ -76,7 +86,8 @@ function userAgentFor(pm: string): string {
  * cwd 是传给子进程的，而不是改本进程的工作目录：vitest 的 worker 共享进程，
  * `process.chdir()` 会污染同时在跑的其它用例。**这些测试里永远不要调 chdir。**
  *
- * stdin 传 'ignore'，保证子进程拿不到 TTY——否则某个走到交互提示的用例会直接挂住。
+ * stdin 默认传 'ignore'，保证子进程拿不到 TTY——否则某个走到交互提示的用例会直接挂住。
+ * 只有 `cancelAfterStdout` 会把它换成管道，用来模拟交互式 Ctrl+C。
  */
 export function runCli(
   fixture: Fixture,
@@ -84,10 +95,12 @@ export function runCli(
   options: RunCliOptions = {},
 ): Promise<CliResult> {
   return new Promise((resolve, reject) => {
+    const wantsCancel = options.cancelAfterStdout !== undefined
+
     const child = spawn(process.execPath, [BIN_PATH, ...args], {
       cwd: fixture.dir,
       env: buildEnv(options),
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: [wantsCancel ? 'pipe' : 'ignore', 'pipe', 'pipe'],
       // 低于 vitest 的用例超时，这样挂住会变成一条带部分输出的可读结果，
       // 而不是被 vitest 直接杀掉 worker
       timeout: options.timeoutMs ?? 30_000,
@@ -96,9 +109,32 @@ export function runCli(
     let stdout = ''
     let stderr = ''
     let timedOut = false
+    let cancelSent = false
 
-    child.stdout.on('data', d => (stdout += d))
-    child.stderr.on('data', d => (stderr += d))
+    // stdio 后两位恒为 'pipe'，这两个流一定存在；首位是动态的，
+    // 所以 TS 只能推出 ChildProcess 而不是 ChildProcessWithoutNullStreams
+    const childStdout = child.stdout!
+    const childStderr = child.stderr!
+
+    childStdout.on('data', (d) => {
+      stdout += d
+
+      if (!wantsCancel || cancelSent) {
+        return
+      }
+      if (!stripVTControlCharacters(stdout).includes(options.cancelAfterStdout!)) {
+        return
+      }
+      cancelSent = true
+      // \u0003 就是 Ctrl+C 的字节。clack 靠 readline 的 keypress 事件识别它，
+      // 管道下（非 TTY）同样有效——实测确认过。
+      child.stdin!.write('\u0003')
+      // 必须收掉：取消分支会跑完并给出退出码，但 stdin 管道只要还开着事件循环就不空，
+      // 进程会一直挂到超时
+      child.stdin!.end()
+    })
+
+    childStderr.on('data', d => (stderr += d))
     child.on('error', reject)
     child.on('close', (code, signal) => {
       // spawn 的 timeout 到点是发信号杀进程，没有独立的 timedOut 标志

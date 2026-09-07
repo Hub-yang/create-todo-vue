@@ -47,6 +47,22 @@ const PACKAGE_ROOT = path.resolve(ENTRY_FILE, '../..')
  */
 const spin = prompts.spinner()
 
+/** 正常跑完 */
+const EXIT_OK = 0
+/**
+ * 取消 / 没跑完。
+ *
+ * 刻意不用 130（SIGINT 的约定）：这条码同样会被**非交互**场景取到——stdin 不可读时
+ * 根本没有人按过 Ctrl+C，报 130 是撒谎。1 只表示「没有成功创建」，对调用方足够。
+ */
+const EXIT_CANCELLED = 1
+
+/** 打印取消提示并给出非零退出码。7 处取消点共用，避免漏掉某一处的返回值 */
+function cancelled(): number {
+  cancel()
+  return EXIT_CANCELLED
+}
+
 /**
  * CLI 主流程。
  *
@@ -54,7 +70,7 @@ const spin = prompts.spinner()
  * 调用本函数，而不会被 `process.exit` 连带干掉整个测试进程。
  * @param {string[]} argvInput - 命令行参数（不含 node 与脚本路径本身）
  */
-export async function main(argvInput: string[] = process.argv.slice(2)): Promise<void> {
+export async function main(argvInput: string[] = process.argv.slice(2)): Promise<number> {
   const cwd = process.cwd()
 
   const argv = mri<Options>(argvInput, {
@@ -71,12 +87,12 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
   const help = argv.help
   if (help) {
     console.log(HELP_MESSAGE)
-    return
+    return EXIT_OK
   }
 
   if (argv.version) {
     console.log(getVersion(ENTRY_DIR))
-    return
+    return EXIT_OK
   }
 
   prompts.intro('create-todo-vue')
@@ -95,7 +111,7 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
       },
     })
     if (prompts.isCancel(projectName))
-      return cancel()
+      return cancelled()
     targetDir = formatTargetDir(projectName)
   }
 
@@ -122,7 +138,7 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
         ],
       })
       if (prompts.isCancel(res)) {
-        return cancel()
+        return cancelled()
       }
       overwrite = res
     }
@@ -132,8 +148,7 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
         emptyDir(targetDir)
         break
       case 'no':
-        cancel()
-        return
+        return cancelled()
     }
   }
 
@@ -153,7 +168,7 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
       },
     })
     if (prompts.isCancel(packageNameResult))
-      return cancel()
+      return cancelled()
     packageName = packageNameResult
   }
 
@@ -177,7 +192,7 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
       }),
     })
     if (prompts.isCancel(framework))
-      return cancel()
+      return cancelled()
     template = framework.name
 
     if (framework.variants?.length) {
@@ -196,7 +211,7 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
         }),
       })
       if (prompts.isCancel(variant))
-        return cancel()
+        return cancelled()
       template = variant
     }
   }
@@ -233,7 +248,7 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
       message: `是否立即使用${pkgManager}安装依赖？`,
     })
     if (prompts.isCancel(immediateResult))
-      return cancel()
+      return cancelled()
     immediate = immediateResult
   }
 
@@ -245,6 +260,8 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
   }
 
   prompts.log.success('程序结束')
+
+  return EXIT_OK
 }
 
 /**
@@ -254,8 +271,20 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
  * 是后者那种写法）：这里用到的 `@clack/prompts` 是 devDependency，用户机器上并不存在，
  * 未编译的 bin 里 import 它会直接崩。
  */
-export function runCli(): Promise<void> {
-  return main().catch((e) => {
+export async function runCli(): Promise<void> {
+  // 先假定失败，只有 main() 真的跑完才改回去。
+  //
+  // 这一行不是保险起见，它修的是一条真实路径：clack 的 prompt 在 stdin 不可读时
+  // （EOF / 非 TTY）**promise 永不 settle**，`await` 之后的代码一行都不执行——连
+  // `isCancel` 分支都进不去。进程靠事件循环排空自然退出，于是脚手架什么都没生成却
+  // 报了成功。预置非零码让这条「谁都没接住」的路径老实说自己没跑完。
+  // 用 process.exitCode 而不是 process.exit()：后者会截断还没冲刷完的 stdout。
+  process.exitCode = EXIT_CANCELLED
+
+  try {
+    process.exitCode = await main()
+  }
+  catch (e) {
     // spinner 若仍在转，先收掉，否则报错信息会被它的重绘覆盖。
     // 未 start 过时调用 error() 也是安全的（已实测），所以无需额外判状态。
     spin.error('创建失败')
@@ -265,5 +294,5 @@ export function runCli(): Promise<void> {
       console.error(e.stack)
     }
     process.exit(1)
-  })
+  }
 }

@@ -96,3 +96,73 @@ describe('命令行基础行为', () => {
     expect(firstErrorLine).not.toContain('node:internal')
   })
 })
+
+/**
+ * CTV-29：取消操作必须以非零码退出。
+ *
+ * 这里断言的是**非交互**场景（stdin 关闭），也就是脚本化调用会踩的那个：
+ * 以前它们退 0，调用方无从分辨「用户取消」和「创建成功」。
+ *
+ * ⚠️ 机制与直觉不同，实测过：`@clack/core@1.4.3` 的 prompt 在 stdin 不可读时
+ * **promise 永不 settle**，`await` 之后的代码一行都不执行——`isCancel` 分支和
+ * `cancel()` 从来没被调用过，进程是靠事件循环排空自然退出的。所以：
+ *
+ * - **不要**在这里断言「操作已取消」那句提示，它在这条路径上永远不会出现；
+ * - 退出码不是靠 `cancel()` 返回值给的，而是靠 `runCli()` 预置的悲观退出码兜住的。
+ *
+ * 交互式 Ctrl+C 是**另一条**路径，`cancelled()` 在那里真的会执行——由本组最后一条
+ * 用例覆盖，靠 `cancelAfterStdout` 往 stdin 管道里喂 Ctrl+C 的字节。两条路径都要有，
+ * 缺一条就会有变异逃逸：实测过，只留非交互三条时「`cancelled()` 改成返回 0」这个
+ * 变异能全绿存活。
+ *
+ * 仍有一条进不了 E2E，只有代码审查覆盖：非空目录时主动选中「取消操作」那个选项——
+ * 它要求在选择器里真的选中某一项，喂一个取消键到不了。
+ */
+describe('取消操作的退出码', () => {
+  let fixture: Fixture
+
+  beforeEach(() => {
+    fixture = createFixture()
+  })
+
+  afterEach((ctx) => {
+    fixture.cleanup(ctx.task.result?.state === 'fail')
+  })
+
+  it('无效模板名导致取消时，以非零码退出且不留下任何东西', async () => {
+    const result = await runCli(fixture, ['x', '-t', 'nope', '--overwrite', '--no-immediate'])
+
+    expect(result.timedOut).toBe(false)
+    expect(result.exitCode).toBe(1)
+    expect(fixture.exists('x')).toBe(false)
+  })
+
+  it('未指定模板、在框架选择器上取消时，以非零码退出', async () => {
+    const result = await runCli(fixture, ['y', '--overwrite', '--no-immediate'])
+
+    expect(result.timedOut).toBe(false)
+    expect(result.exitCode).toBe(1)
+    expect(fixture.exists('y')).toBe(false)
+  })
+
+  // 这条覆盖的是**交互式**取消（Ctrl+C），也就是 `cancelled()` 真的被执行到的那一半。
+  // 上面三条走不到它——stdin 不可读时 promise 永不 settle，退出码是靠悲观预置兜住的。
+  it('交互式 Ctrl+C 取消时，打印提示并以非零码退出', async () => {
+    const result = await runCli(fixture, ['z', '--overwrite', '--no-immediate'], {
+      cancelAfterStdout: '选择模板',
+    })
+
+    expect(result.timedOut).toBe(false)
+    expect(result.exitCode).toBe(1)
+    expect(result.stdout).toContain('操作已取消')
+    expect(fixture.exists('z')).toBe(false)
+  })
+
+  it('未指定目录、在项目名输入上取消时，以非零码退出', async () => {
+    const result = await runCli(fixture, ['-t', 'vue-ts', '--overwrite', '--no-immediate'])
+
+    expect(result.timedOut).toBe(false)
+    expect(result.exitCode).toBe(1)
+    expect(fixture.tree()).toEqual([])
+  })
+})
