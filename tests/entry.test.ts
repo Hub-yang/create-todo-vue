@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ARGV_OPTIONS } from '../src/constants'
+import { collectKnownFlags } from '../src/plan'
 
 /**
  * `main()` 的单测——CTV-15 拆分之后才可能存在的东西。
@@ -55,6 +57,37 @@ describe('模块入口', () => {
 
     await expect(main(['--help'])).resolves.toBe(0)
     await expect(main(['--version'])).resolves.toBe(0)
+  })
+
+  /**
+   * mri 会**就地改写**传给它的配置对象：把 alias 的值换成数组、往 boolean 里追加别名
+   * （每调一次追加一轮），其中 `alias.help` 会变成 `[]`。
+   *
+   * CTV-17 让 `mri()` 和 `collectKnownFlags()` 共用同一个 ARGV_OPTIONS，于是派生出的
+   * 已知参数清单里混进了数组。断言写成**绝对值**而不是「调用前后相等」，因为
+   * `isolate: false` 下同文件其它用例可能已经调过 main()，相对比较会一路绿着骗人。
+   */
+  it('调用 main() 不会改写 ARGV_OPTIONS', async () => {
+    const { main } = await import('../src/index')
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await main(['--version'])
+    await main(['--help'])
+
+    expect(ARGV_OPTIONS.boolean).toEqual(['help', 'version', 'overwrite', 'immediate'])
+    expect(ARGV_OPTIONS.string).toEqual(['template'])
+    expect(ARGV_OPTIONS.alias).toEqual({ h: 'help', v: 'version', t: 'template', i: 'immediate' })
+  })
+
+  it('main() 跑过之后，派生出的已知参数清单仍然全是字符串', async () => {
+    const { main } = await import('../src/index')
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await main(['--version'])
+
+    for (const flag of collectKnownFlags(ARGV_OPTIONS)) {
+      expect(typeof flag, `已知参数清单里混进了非字符串：${JSON.stringify(flag)}`).toBe('string')
+    }
   })
 
   // CTV-17：mri 会静默吞掉未声明的 flag，拼错时还会把后面的位置参数当成它的值吃掉。

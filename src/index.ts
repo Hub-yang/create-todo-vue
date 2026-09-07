@@ -77,7 +77,12 @@ function cancelled(): number {
 export async function main(argvInput: string[] = process.argv.slice(2)): Promise<number> {
   const cwd = process.cwd()
 
-  const argv = mri<Options>(argvInput, ARGV_OPTIONS)
+  // 必须传副本：mri 会**就地改写**配置对象——把 alias 的值换成数组（`alias.help` 会变成
+  // `[]`）、往 boolean 里追加别名，且每调一次追加一轮、无上限增长。直接传 ARGV_OPTIONS
+  // 会让紧接着的 collectKnownFlags() 读到被污染的数据。
+  // 注意 Object.freeze 挡不住：mri 是 CJS 非严格模式，赋值只会静默失败，
+  // 而且浅冻结管不到嵌套的 alias 与 boolean（已实测）。
+  const argv = mri<Options>(argvInput, structuredClone(ARGV_OPTIONS))
 
   const argTargetDir = argv._[0] ? formatTargetDir(String(argv._[0])) : undefined
   const argOverwrite = argv.overwrite
