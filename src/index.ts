@@ -131,8 +131,20 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
     targetDir = formatTargetDir(projectName)
   }
 
+  /**
+   * 目标目录的绝对路径，**从这里往下一律用它**，不要再用 `targetDir`。
+   *
+   * 必须是 `resolve` 而不是 `join`：`join(cwd, '/abs/path')` 会把绝对路径当相对路径
+   * 接在 cwd 后面，于是在 cwd 底下造出一整棵镜像目录树，用户要的位置一个文件都没有，
+   * 而 CLI 照样报告创建成功（CTV-19）。
+   *
+   * 位置也要紧：它必须算在「目标已存在」的判断**之前**，否则那一步仍然对着
+   * 相对 cwd 的 `targetDir` 做存在性检查与清空，绝对路径下会检查错地方。
+   */
+  const root = path.resolve(cwd, targetDir)
+
   // 2.如果目录存在且不为空，则进行处理
-  if (fs.existsSync(targetDir) && !isEmpty(targetDir)) {
+  if (fs.existsSync(root) && !isEmpty(root)) {
     let overwrite: 'yes' | 'no' | 'ignore' | undefined = argOverwrite ? 'yes' : undefined
 
     if (!overwrite) {
@@ -161,7 +173,7 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
 
     switch (overwrite) {
       case 'yes':
-        emptyDir(targetDir)
+        emptyDir(root)
         break
       case 'no':
         return cancelled()
@@ -233,7 +245,6 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
   }
 
   const pkgManager = pkgInfo?.name || 'npm'
-  const root = path.join(cwd, targetDir)
 
   // 如果已选模板存在安装指令，则转交给上游脚手架，完全不走内置模板
   const customCommand = findVariantCommand(FRAMEWORKS, template)
