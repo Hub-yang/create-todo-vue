@@ -14,6 +14,7 @@ import {
   getFullCustomCommand,
   getInstallCommand,
   getLabel,
+  getRunCommand,
   getVersion,
   isEmpty,
   isValidPackageName,
@@ -139,6 +140,26 @@ describe('getInstallCommand', () => {
 
   it.each(['npm', 'pnpm', 'bun', 'deno'])('%s 带 install 子命令', (pm) => {
     expect(getInstallCommand(pm)).toEqual([pm, 'install'])
+  })
+})
+
+/**
+ * CTV-21：装完依赖之后要告诉用户怎么把项目跑起来，需要一条「执行脚本」的命令。
+ *
+ * 形状对齐 `getInstallCommand`：yarn 1.x 不用 `run` 子命令（`yarn dev` 即可），
+ * 其余包管理器统一 `<pm> run <script>`。
+ */
+describe('getRunCommand', () => {
+  it('yarn 不带 run 子命令', () => {
+    expect(getRunCommand('yarn', 'dev')).toEqual(['yarn', 'dev'])
+  })
+
+  it.each(['npm', 'pnpm', 'bun', 'deno'])('%s 带 run 子命令', (pm) => {
+    expect(getRunCommand(pm, 'dev')).toEqual([pm, 'run', 'dev'])
+  })
+
+  it('脚本名原样透传，不写死 dev', () => {
+    expect(getRunCommand('npm', 'build')).toEqual(['npm', 'run', 'build'])
   })
 })
 

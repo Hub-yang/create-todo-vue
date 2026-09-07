@@ -236,6 +236,15 @@ export function getInstallCommand(pkgManager: string) {
   return pkgManager === 'yarn' ? [pkgManager] : [pkgManager, 'install']
 }
 
+/**
+ * 拼出执行某个 npm script 的命令
+ *
+ * 与 `getInstallCommand` 同一个 yarn 特例：yarn 1.x 不需要 `run` 子命令。
+ */
+export function getRunCommand(pkgManager: string, script: string) {
+  return pkgManager === 'yarn' ? [pkgManager, script] : [pkgManager, 'run', script]
+}
+
 function run([command, ...args]: string[], options?: SpawnOptions) {
   const { status, error } = spawn.sync(command, args, options)
 

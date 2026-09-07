@@ -184,6 +184,45 @@ describe('脚手架生成', () => {
     expect(fixture.exists('my-app/node_modules')).toBe(false)
   })
 
+  /**
+   * CTV-21：`-i` 分支装完依赖后也要告诉用户下一步。
+   *
+   * ⚠️ 这里的「包管理器」是 `/usr/bin/true`——一个真实存在、忽略参数、立刻退 0 的
+   * 二进制。`npm_config_user_agent` 决定 `pkgFromUserAgent()` 认出什么，于是
+   * `install()` 会真的 spawn 一次 `true install`，秒退且**不联网、不装任何东西**，
+   * 从而让 `-i` 之后那段收尾代码被真正执行到。
+   *
+   * 不这么做的话这条分支只能靠手工实跑：真传 `-i` 会去联网跑 npm install，
+   * 而本仓库的铁律是任何 E2E 用例都不该触发真实安装。
+   *
+   * 注意它覆盖的是**接线与文案**，不是「安装真的成功了」——后者不属于 E2E 的范围。
+   */
+  it('装完依赖后给出的是启动命令，不是再装一遍', async () => {
+    const result = await runCli(
+      fixture,
+      ['my-app', '-t', 'vanilla', '--overwrite', '-i'],
+      { packageManager: 'true' },
+    )
+    assertOk(result, fixture)
+
+    expect(result.stdout).toContain('依赖安装完成，请执行：')
+    expect(result.stdout).toContain('cd my-app')
+    // clack 的 log.* 给续行加了 '│ ' 装订线，行锚点要放它过去
+    expect(result.stdout).toMatch(/^[│\s]*true run dev\s*$/m)
+  })
+
+  it('装完依赖后不再打印安装命令——那是没装时才该给的', async () => {
+    const result = await runCli(
+      fixture,
+      ['my-app', '-t', 'vanilla', '--overwrite', '-i'],
+      { packageManager: 'true' },
+    )
+    assertOk(result, fixture)
+
+    expect(result.stdout).not.toContain('创建完成，请执行：')
+    expect(result.stdout).not.toMatch(/^[│\s]*true install\s*$/m)
+  })
+
   it('模板目录本身不会被改动', async () => {
     const templateDir = path.resolve(
       path.dirname(new URL(import.meta.url).pathname),

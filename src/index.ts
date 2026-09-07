@@ -316,6 +316,9 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
 
   if (immediate) {
     install(root, pkgManager)
+    // 装完依赖的人更需要知道怎么把项目跑起来。刻意用 log.* 而不是 outro()：
+    // 补上缺失的收尾框线是另一件事（CTV-34），混在这里会让两条各自没法独立验证。
+    prompts.log.info(buildDoneMessage(cwd, root, pkgManager, true))
   }
   else {
     prompts.outro(buildDoneMessage(cwd, root, pkgManager))

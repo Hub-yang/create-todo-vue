@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { getInstallCommand, isValidPackageName } from './utils'
+import { getInstallCommand, getRunCommand, isValidPackageName } from './utils'
 
 /**
  * 纯决策层。
@@ -162,18 +162,37 @@ export function withPackageName(pkgText: string, name: string): string {
 }
 
 /**
- * 拼出「不立即安装依赖」时的收尾提示
+ * 拼出收尾提示
+ *
+ * 两种形态只差首行措辞和末行命令，`cd` 那半边的规则完全共用：
+ *
+ * | `installed` | 首行 | 末行 |
+ * |---|---|---|
+ * | `false`（默认） | 创建完成，请执行： | `npm install` |
+ * | `true` | 依赖安装完成，请执行： | `npm run dev` |
+ *
+ * `installed` 默认 `false` 是刻意的：既有调用点与既有测试因此一行都不用改，
+ * 「原有断言全绿」才继续是个干净的信号（CTV-21）。
  * @param {string} cwd - 当前工作目录
  * @param {string} root - 生成的项目根目录
  * @param {string} pkgManager - 包管理器名
+ * @param {boolean} installed - 依赖是否已经装好；true 时末行给启动命令而不是安装命令
  */
-export function buildDoneMessage(cwd: string, root: string, pkgManager: string): string {
+export function buildDoneMessage(
+  cwd: string,
+  root: string,
+  pkgManager: string,
+  installed = false,
+): string {
   const cdProjectName = path.relative(cwd, root)
-  let doneMessage = '创建完成，请执行：'
+  let doneMessage = installed ? '依赖安装完成，请执行：' : '创建完成，请执行：'
   if (cwd !== root) {
     doneMessage += `\n cd ${cdProjectName.includes(' ') ? `"${cdProjectName}"` : cdProjectName}`
   }
-  doneMessage += `\n ${getInstallCommand(pkgManager).join(' ')}`
+  const command = installed
+    ? getRunCommand(pkgManager, 'dev')
+    : getInstallCommand(pkgManager)
+  doneMessage += `\n ${command.join(' ')}`
   return doneMessage
 }
 

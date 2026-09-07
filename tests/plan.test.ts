@@ -349,6 +349,43 @@ describe('buildDoneMessage', () => {
   })
 })
 
+/**
+ * CTV-21：依赖已经装完时，末行该给「怎么跑起来」而不是再让人装一遍。
+ *
+ * 只有首行措辞和末行命令随 `installed` 变，`cd` 那半边的规则完全共用——所以
+ * 这一组只钉住差异，不重复覆盖 cd 的四种情形（上一组已经覆盖过了）。
+ */
+describe('buildDoneMessage · 依赖已安装', () => {
+  const cwd = '/w'
+
+  it('首行改口，末行给启动命令而不是安装命令', () => {
+    expect(buildDoneMessage(cwd, path.join(cwd, 'my-app'), 'npm', true))
+      .toBe('依赖安装完成，请执行：\n cd my-app\n npm run dev')
+  })
+
+  it('目标就是 cwd 时同样不打印 cd', () => {
+    expect(buildDoneMessage(cwd, cwd, 'npm', true))
+      .toBe('依赖安装完成，请执行：\n npm run dev')
+  })
+
+  it('yarn 的启动命令不带 run 子命令', () => {
+    expect(buildDoneMessage(cwd, path.join(cwd, 'a'), 'yarn', true))
+      .toBe('依赖安装完成，请执行：\n cd a\n yarn dev')
+  })
+
+  it('pnpm / bun 照常带 run', () => {
+    expect(buildDoneMessage(cwd, path.join(cwd, 'a'), 'pnpm', true))
+      .toBe('依赖安装完成，请执行：\n cd a\n pnpm run dev')
+    expect(buildDoneMessage(cwd, path.join(cwd, 'a'), 'bun', true))
+      .toBe('依赖安装完成，请执行：\n cd a\n bun run dev')
+  })
+
+  it('不传第四个参数时维持原样——既有调用点一行都不用改', () => {
+    expect(buildDoneMessage(cwd, path.join(cwd, 'a'), 'npm'))
+      .toBe('创建完成，请执行：\n cd a\n npm install')
+  })
+})
+
 describe('collectKnownFlags', () => {
   it('汇总 boolean 与 string 声明', () => {
     expect(collectKnownFlags({ boolean: ['help'], string: ['template'] }))
