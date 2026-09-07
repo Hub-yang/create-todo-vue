@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import * as prompts from '@clack/prompts'
 import spawn from 'cross-spawn'
 import mri from 'mri'
-import { ARGV_OPTIONS, DEFAULTE_TARGETDIR, FRAMEWORKS, HELP_MESSAGE, RENAME_FILES, TEMPLATES } from './constants'
+import { ARGV_OPTIONS, DEFAULT_TARGET_DIR, FRAMEWORKS, HELP_MESSAGE, RENAME_FILES, TEMPLATES } from './constants'
 import {
   buildCustomCommandArgs,
   buildDoneMessage,
@@ -120,8 +120,8 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
   if (!targetDir) {
     const projectName = await prompts.text({
       message: '项目名称:',
-      defaultValue: DEFAULTE_TARGETDIR,
-      placeholder: DEFAULTE_TARGETDIR,
+      defaultValue: DEFAULT_TARGET_DIR,
+      placeholder: DEFAULT_TARGET_DIR,
       validate(value) {
         return !value || formatTargetDir(value).length > 0 ? undefined : '项目名称无效'
       },

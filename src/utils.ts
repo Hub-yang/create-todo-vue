@@ -174,8 +174,8 @@ export function getFullCustomCommand(customCommand: string, pkgInfo?: PkgInfo) {
 /**
  * 获取框架预设终端标题
  */
-export function getLabel(variants: FrameworkVariant) {
-  const { display, name, color, link } = variants
+export function getLabel(variant: FrameworkVariant) {
+  const { display, name, color, link } = variant
   const labelText = display || name
   let label = color(labelText)
   if (link) {

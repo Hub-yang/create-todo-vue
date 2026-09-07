@@ -35,7 +35,7 @@ ${yellow('vanilla-ts    vanilla')}
 ${green('vue-ts        vue')}
 ${redBright('lit-ts        lit')}`
 
-export const DEFAULTE_TARGETDIR = 'vue-project'
+export const DEFAULT_TARGET_DIR = 'vue-project'
 
 /**
  * mri 的解析配置。
