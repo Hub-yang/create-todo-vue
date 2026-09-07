@@ -1,10 +1,12 @@
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { FRAMEWORKS, RENAME_FILES } from '../src/constants'
+import { ARGV_OPTIONS, FRAMEWORKS, RENAME_FILES } from '../src/constants'
 import {
   buildCustomCommandArgs,
   buildDoneMessage,
+  collectKnownFlags,
   derivePackageName,
+  findUnknownFlags,
   findVariantCommand,
   planTemplateFiles,
   replaceHtmlTitle,
@@ -344,5 +346,76 @@ describe('buildDoneMessage', () => {
   it('cd 的是相对路径，不是绝对路径', () => {
     expect(buildDoneMessage(cwd, path.join(cwd, 'nested', 'app'), 'npm'))
       .toBe(`创建完成，请执行：\n cd ${path.join('nested', 'app')}\n npm install`)
+  })
+})
+
+describe('collectKnownFlags', () => {
+  it('汇总 boolean 与 string 声明', () => {
+    expect(collectKnownFlags({ boolean: ['help'], string: ['template'] }))
+      .toEqual(['help', 'template'])
+  })
+
+  it('别名的两侧都算已知——mri 会同时产出短名和全名', () => {
+    const known = collectKnownFlags({ alias: { t: 'template' } })
+    expect(known).toContain('t')
+    expect(known).toContain('template')
+  })
+
+  it('去重：别名指向的名字同时出现在 boolean 里时只留一份', () => {
+    expect(collectKnownFlags({ boolean: ['help'], alias: { h: 'help' } }))
+      .toEqual(['help', 'h'])
+  })
+
+  it('空配置得到空清单', () => {
+    expect(collectKnownFlags({})).toEqual([])
+  })
+
+  it('真实配置覆盖 CLI 的全部参数', () => {
+    const known = collectKnownFlags(ARGV_OPTIONS)
+    for (const name of ['help', 'version', 'overwrite', 'immediate', 'template', 'h', 'v', 't', 'i']) {
+      expect(known, `已知参数清单漏了 ${name}`).toContain(name)
+    }
+  })
+})
+
+describe('findUnknownFlags', () => {
+  const known = collectKnownFlags(ARGV_OPTIONS)
+
+  it('全是已知参数时返回空', () => {
+    expect(findUnknownFlags({ _: [], help: true }, known)).toEqual([])
+  })
+
+  it('位置参数 _ 永远不算未知', () => {
+    expect(findUnknownFlags({ _: ['my-app'] }, known)).toEqual([])
+  })
+
+  it('揪出拼错的参数', () => {
+    expect(findUnknownFlags({ _: [], overwirte: true }, known)).toEqual(['overwirte'])
+  })
+
+  it('多个未知参数按用户输入的顺序返回', () => {
+    expect(findUnknownFlags({ _: [], zzz: true, aaa: true }, known)).toEqual(['zzz', 'aaa'])
+  })
+
+  it('大小写敏感——Template 不是 template', () => {
+    expect(findUnknownFlags({ _: [], Template: 'vue' }, known)).toEqual(['Template'])
+  })
+
+  // 下面四条是「不许误报」的守卫，逐条对应实测过的 mri 行为
+  it('不误报：mri 把 -t 展开成 t 和 template 两个键', () => {
+    expect(findUnknownFlags({ _: [], t: 'vue-ts', template: 'vue-ts' }, known)).toEqual([])
+  })
+
+  it('不误报：--no-immediate 产出的是 immediate/i，不是 no-immediate', () => {
+    expect(findUnknownFlags({ _: [], immediate: false, i: false }, known)).toEqual([])
+  })
+
+  it('不误报：-hv 这类合并短参会展开成四个已知键', () => {
+    expect(findUnknownFlags({ _: [], h: true, v: true, help: true, version: true }, known))
+      .toEqual([])
+  })
+
+  it('不误报：`--` 之后的内容进 _，不产生键', () => {
+    expect(findUnknownFlags({ _: ['my-app', '--weird'] }, known)).toEqual([])
   })
 })

@@ -57,6 +57,44 @@ describe('模块入口', () => {
     await expect(main(['--version'])).resolves.toBe(0)
   })
 
+  // CTV-17：mri 会静默吞掉未声明的 flag，拼错时还会把后面的位置参数当成它的值吃掉。
+  it('未知参数让 main 返回非零，并把参数名打到 stderr', async () => {
+    const { main } = await import('../src/index')
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await expect(main(['--overwirte'])).resolves.toBe(1)
+    expect(err.mock.calls.flat().join('\n')).toContain('--overwirte')
+  })
+
+  it('多个未知参数一次性全部列出', async () => {
+    const { main } = await import('../src/index')
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await expect(main(['--aaa', '--bbb'])).resolves.toBe(1)
+    const printed = err.mock.calls.flat().join('\n')
+    expect(printed).toContain('--aaa')
+    expect(printed).toContain('--bbb')
+  })
+
+  // 次序守卫：--help 必须在校验之前处理。有人把两段调换的话这条会红。
+  it('--help 优先于未知参数校验，带着拼错的参数也照样给帮助', async () => {
+    const { main } = await import('../src/index')
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await expect(main(['--help', '--typo'])).resolves.toBe(0)
+    expect(log.mock.calls[0][0]).toContain('可用模板:')
+  })
+
+  it('--version 同样优先于未知参数校验', async () => {
+    const { main } = await import('../src/index')
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await expect(main(['--version', '--typo'])).resolves.toBe(0)
+    expect(log.mock.calls[0][0]).toMatch(/^\d+\.\d+\.\d+$/)
+  })
+
   it('-v 与 -h 的别名同样生效', async () => {
     const { main } = await import('../src/index')
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})

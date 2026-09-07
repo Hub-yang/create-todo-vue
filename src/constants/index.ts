@@ -37,6 +37,22 @@ ${redBright('lit-ts        lit')}`
 
 export const DEFAULTE_TARGETDIR = 'vue-project'
 
+/**
+ * mri 的解析配置。
+ *
+ * 提成常量是为了让「已知参数清单」由它**派生**（见 `plan.ts` 的 `collectKnownFlags`），
+ * 而不是另抄一份名单。未知参数校验一旦用手抄名单，加一个新 flag 就会被自己的校验拒掉，
+ * 而这个仓库已经因为「同一份清单手写多遍」栽过一次（CTV-05 的模板清单三处漂移）。
+ *
+ * 加删参数只改这里，`HELP_MESSAGE` 里对应的一行也要跟着改——
+ * `tests/constants.test.ts` 有断言盯着两者不许脱节。
+ */
+export const ARGV_OPTIONS = {
+  boolean: ['help', 'version', 'overwrite', 'immediate'],
+  alias: { h: 'help', v: 'version', t: 'template', i: 'immediate' },
+  string: ['template'],
+}
+
 export const FRAMEWORKS: Framework[] = [
   {
     name: 'vanilla',

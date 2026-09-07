@@ -176,3 +176,48 @@ export function buildDoneMessage(cwd: string, root: string, pkgManager: string):
   doneMessage += `\n ${getInstallCommand(pkgManager).join(' ')}`
   return doneMessage
 }
+
+/** `mri` 解析配置里与「参数名」有关的部分 */
+export interface ArgvOptions {
+  boolean?: readonly string[]
+  string?: readonly string[]
+  alias?: Readonly<Record<string, string>>
+}
+
+/**
+ * 由 mri 配置派生出全部合法参数名
+ *
+ * 别名的**两侧**都要算已知：mri 解析 `-t vue` 会同时产出 `t` 和 `template` 两个键，
+ * 只收其中一边会让合法输入被误判成未知参数。
+ * @param {ArgvOptions} options - mri 的解析配置
+ * @returns 去重后的参数名清单
+ */
+export function collectKnownFlags(options: ArgvOptions): string[] {
+  const alias = options.alias ?? {}
+  return [...new Set([
+    ...options.boolean ?? [],
+    ...options.string ?? [],
+    ...Object.values(alias),
+    ...Object.keys(alias),
+  ])]
+}
+
+/**
+ * 找出 mri 解析结果里不在已知清单中的参数
+ *
+ * mri 会静默吞掉未声明的 flag——`--overwirte` 拼错时不但不报错，还会把紧跟其后的
+ * 位置参数当成它的值吃掉（实测：`--overwirte my-app` 得到 `{overwirte: 'my-app'}`，
+ * `_` 是空的），于是项目名也一并丢了。这个函数把那种输入变成可报错的信号。
+ * @param {object} parsed - mri 的解析结果。这里只取 `Object.keys`，所以用 `object` 就够——
+ * mri 返回的 `Argv<T>` 没有索引签名，收 `Record<string, unknown>` 会逼调用点硬转型
+ * @param {readonly string[]} known - 合法参数名清单
+ * @returns 未知参数名，保持用户输入的先后顺序
+ */
+export function findUnknownFlags(
+  parsed: object,
+  known: readonly string[],
+): string[] {
+  const allowed = new Set(known)
+  // '_' 是 mri 存放位置参数的固定键，不是 flag
+  return Object.keys(parsed).filter(name => name !== '_' && !allowed.has(name))
+}

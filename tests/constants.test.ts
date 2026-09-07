@@ -2,7 +2,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { FRAMEWORKS, HELP_MESSAGE, TEMPLATES } from '../src/constants'
+import { ARGV_OPTIONS, FRAMEWORKS, HELP_MESSAGE, TEMPLATES } from '../src/constants'
+import { collectKnownFlags } from '../src/plan'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -73,6 +74,41 @@ describe('模板注册表', () => {
   it('帮助信息覆盖了全部内置模板', () => {
     for (const name of builtinTemplates) {
       expect(stripAnsi(HELP_MESSAGE), `HELP_MESSAGE 漏了 ${name}`).toContain(name)
+    }
+  })
+})
+
+/**
+ * CTV-17 引入未知参数校验之后，`HELP_MESSAGE` 与 `ARGV_OPTIONS` 脱节的后果变严重了：
+ * 帮助里写了但配置里没有 → CLI 会拒绝自己文档宣传的参数；配置里有但帮助里没写 →
+ * 用户无从知道它存在。两个方向都钉住。
+ */
+describe('参数清单与帮助信息', () => {
+  /** 从 help 的「参数」区块里抓出所有 -x / --xxx，去掉前导横线 */
+  const documented = [...new Set(
+    stripAnsi(HELP_MESSAGE)
+      .split('参数:')[1]
+      .split('可用模板:')[0]
+      .match(/--?[a-z][\w-]*/gi) ?? [],
+  )].map(flag => flag.replace(/^--?/, ''))
+
+  const known = collectKnownFlags(ARGV_OPTIONS)
+
+  it('帮助里能抓到参数，正则没有失灵', () => {
+    expect(documented.length).toBeGreaterThanOrEqual(5)
+  })
+
+  it('帮助里写的每个参数都是 CLI 真正接受的', () => {
+    for (const flag of documented) {
+      expect(known, `HELP_MESSAGE 写了 --${flag}，但 ARGV_OPTIONS 没声明——CLI 会拒绝它`)
+        .toContain(flag)
+    }
+  })
+
+  it('cLI 接受的每个参数在帮助里都有交代', () => {
+    for (const flag of known) {
+      expect(documented, `ARGV_OPTIONS 声明了 ${flag}，但 HELP_MESSAGE 没写`)
+        .toContain(flag)
     }
   })
 })

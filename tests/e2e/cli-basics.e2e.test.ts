@@ -166,3 +166,50 @@ describe('取消操作的退出码', () => {
     expect(fixture.tree()).toEqual([])
   })
 })
+
+/**
+ * CTV-17：mri 默认静默吞掉未声明的 flag。
+ *
+ * 实测过一个比「被忽略」更糟的后果：`--overwirte my-app` 会让 mri 把 `my-app` 当成
+ * 那个拼错 flag 的值吃掉（得到 `{overwirte: 'my-app'}`，`_` 是空的），于是项目名也丢了，
+ * CLI 会转而追问「项目名称」——用户完全看不出自己打错了什么。
+ */
+describe('未知参数校验', () => {
+  let fixture: Fixture
+
+  beforeEach(() => {
+    fixture = createFixture()
+  })
+
+  afterEach((ctx) => {
+    fixture.cleanup(ctx.task.result?.state === 'fail')
+  })
+
+  it('拼错的参数会被指出来，并以非零码退出', async () => {
+    const result = await runCli(fixture, ['--overwirte', 'my-app'])
+
+    expect(result.timedOut).toBe(false)
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr).toContain('--overwirte')
+  })
+
+  it('报错后不进入交互，也不留下任何东西', async () => {
+    const result = await runCli(fixture, ['--overwirte', 'my-app'])
+
+    expect(result.stdout).not.toContain('项目名称')
+    expect(fixture.tree()).toEqual([])
+  })
+
+  it('提示用户去看 --help', async () => {
+    const result = await runCli(fixture, ['--bogus'])
+
+    expect(result.stderr).toContain('--help')
+  })
+
+  it('合法参数组合不受影响', async () => {
+    const result = await runCli(fixture, ['ok', '-t', 'vue-ts', '--overwrite', '--no-immediate'])
+
+    expect(result.exitCode).toBe(0)
+    expect(fixture.exists('ok/package.json')).toBe(true)
+  })
+})

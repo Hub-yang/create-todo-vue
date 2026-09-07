@@ -5,11 +5,13 @@ import { fileURLToPath } from 'node:url'
 import * as prompts from '@clack/prompts'
 import spawn from 'cross-spawn'
 import mri from 'mri'
-import { DEFAULTE_TARGETDIR, FRAMEWORKS, HELP_MESSAGE, RENAME_FILES, TEMPLATES } from './constants'
+import { ARGV_OPTIONS, DEFAULTE_TARGETDIR, FRAMEWORKS, HELP_MESSAGE, RENAME_FILES, TEMPLATES } from './constants'
 import {
   buildCustomCommandArgs,
   buildDoneMessage,
+  collectKnownFlags,
   derivePackageName,
+  findUnknownFlags,
   findVariantCommand,
   resolveArgTemplate,
 } from './plan'
@@ -56,6 +58,8 @@ const EXIT_OK = 0
  * 根本没有人按过 Ctrl+C，报 130 是撒谎。1 只表示「没有成功创建」，对调用方足够。
  */
 const EXIT_CANCELLED = 1
+/** 命令行本身就不对（拼错参数之类）。与 EXIT_CANCELLED 同值，分开命名只为调用点自解释 */
+const EXIT_USAGE = 1
 
 /** 打印取消提示并给出非零退出码。7 处取消点共用，避免漏掉某一处的返回值 */
 function cancelled(): number {
@@ -73,11 +77,7 @@ function cancelled(): number {
 export async function main(argvInput: string[] = process.argv.slice(2)): Promise<number> {
   const cwd = process.cwd()
 
-  const argv = mri<Options>(argvInput, {
-    boolean: ['help', 'version', 'overwrite', 'immediate'],
-    alias: { h: 'help', v: 'version', t: 'template', i: 'immediate' },
-    string: ['template'],
-  })
+  const argv = mri<Options>(argvInput, ARGV_OPTIONS)
 
   const argTargetDir = argv._[0] ? formatTargetDir(String(argv._[0])) : undefined
   const argOverwrite = argv.overwrite
@@ -93,6 +93,17 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
   if (argv.version) {
     console.log(getVersion(ENTRY_DIR))
     return EXIT_OK
+  }
+
+  // 校验刻意排在 --help / --version 之后：用户要文档就给文档，别因为同一行里
+  // 还有个错别字就把帮助也扣下。这与 @huberyyang/todo-scripts 的次序一致。
+  const unknownFlags = findUnknownFlags(argv, collectKnownFlags(ARGV_OPTIONS))
+  if (unknownFlags.length) {
+    // 走明文而不是 clack：此时还没调 intro()，clack 的框线会是断的。
+    // 也刻意不抛异常——抛了会走 runCli 的兜底打出完整调用栈，而打错参数不是 bug。
+    console.error(`未知参数：${unknownFlags.map(name => `--${name}`).join(', ')}`)
+    console.error('运行 create-todo-vue --help 查看可用参数')
+    return EXIT_USAGE
   }
 
   prompts.intro('create-todo-vue')
