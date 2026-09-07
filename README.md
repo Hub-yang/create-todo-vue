@@ -44,12 +44,13 @@ npm create @huberyyang/todo-vue vue-project --overwrite -t vue-ts --no-immediate
 
 #### 🔵 参数说明
 
+- `<项目目录>` 位置参数，相对路径与绝对路径都可以；不传则会询问
 - `-h, --help` 查看帮助
 - `-v, --version` 查看版本号
 - `-t, --template` 指定模板
-- `-i, --immediate` 创建后立即安装依赖
+- `-i, --immediate` 创建后立即安装依赖，装完会打印启动命令
 - `--no-immediate` 创建后不安装依赖，只打印后续步骤（不加这两个 flag 时会询问）
-- `--overwrite` 目标目录不为空时直接覆盖，不再询问
+- `--overwrite` 目标已存在时直接覆盖，不再询问：目录会被清空（`.git` 保留），同名文件会被删除
 
 传入未声明的参数会直接报错退出，并列出拼错的那个。
 
