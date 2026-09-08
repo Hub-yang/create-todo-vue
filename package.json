@@ -1,7 +1,7 @@
 {
   "name": "@huberyyang/create-todo-vue",
   "type": "module",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "packageManager": "pnpm@11.25.0",
   "description": "💡 create vue projects with awesome templates",
   "author": "HuberyYang",
