@@ -81,13 +81,13 @@ npm create @huberyyang/todo-vue .foo --overwrite -t vue-ts --no-immediate --pack
 - `vue` / `vue-ts`
 - `lit` / `lit-ts`
 
-交互式选择 Vue 时，还可转交给以下上游脚手架：
+转交上游脚手架的模板（同样 `-t` 可直接指定，交互式在 Vue 下也能选到）：
 
-- `Official Vue Starter` → `create-vue`
-- `Nuxt` → `nuxi init`
-- `Vike` → `create vike --vue`
-- `Vitesse` → `degit antfu-collective/vitesse`
-- `Vitesse Lite` → `degit antfu-collective/vitesse-lite`
+- `custom-create-vue` → `create-vue`（Official Vue Starter）
+- `custom-nuxt` → `nuxi init`（Nuxt）
+- `custom-vike-vue` → `create vike --vue`（Vike）
+- `custom-vitesse` → `degit antfu-collective/vitesse`（Vitesse）
+- `custom-vitesse-lite` → `degit antfu-collective/vitesse-lite`（Vitesse Lite）
 
 > 转交上游的模板由对方的脚手架直接生成，因此**不会**像内置模板那样把 `package.json` 的 `name`
 > 和 `index.html` 的 `<title>` 改写成你的项目名——需要的话生成后自己改一下。这几个还需要联网。
