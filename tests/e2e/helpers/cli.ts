@@ -62,8 +62,12 @@ export interface RunCliOptions {
    * ⚠️ 它测的**不是** npm 能不能装包——那是 npm 的事，不该由本仓库的测试负责。
    * 它测的是「我们把命令发出去之后，自己这边的收尾渲染对不对」。CLAUDE.md 里原先记着
    * 这两块「刻意留白」，2026-09-08 做 CTV-34 时按上述边界改成覆盖。
+   *
+   * 传对象可以指定假包管理器的退出码，用来覆盖**安装失败**那一支（CTV-39）。
+   * 挑退出码时避开 1：那个值和「取消」「参数有误」撞车，透传测试会分不清
+   * 到底是不是真的透传过来的。
    */
-  stubPackageManager?: boolean
+  stubPackageManager?: boolean | { exitCode?: number }
 }
 
 /**
@@ -74,18 +78,23 @@ export interface RunCliOptions {
  */
 let stubBinDir: string | undefined
 
-function ensureStubBin(pkgManager: string): string {
+function ensureStubBin(pkgManager: string, exitCode: number): string {
   if (!stubBinDir) {
     stubBinDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ctv-e2e-stub-'))
     process.on('exit', () => fs.rmSync(stubBinDir!, { recursive: true, force: true }))
   }
-  const bin = path.join(stubBinDir, pkgManager)
+  // 退出码不同的假包管理器要各占一个目录，否则同名文件会互相覆盖
+  const dir = path.join(stubBinDir, String(exitCode))
+  const bin = path.join(dir, pkgManager)
   if (!fs.existsSync(bin)) {
-    // 把收到的参数原样回显，方便失败时看出到底发了什么命令
-    fs.writeFileSync(bin, `#!/bin/sh\necho "[stub ${pkgManager}] $*"\nexit 0\n`)
+    fs.mkdirSync(dir, { recursive: true })
+    // 把收到的参数原样回显，方便失败时看出到底发了什么命令；
+    // 非零退出时还往 stderr 写一行，模拟真实包管理器的报错
+    const complain = exitCode === 0 ? '' : `echo "[stub ${pkgManager}] 装不上" >&2\n`
+    fs.writeFileSync(bin, `#!/bin/sh\necho "[stub ${pkgManager}] $*"\n${complain}exit ${exitCode}\n`)
     fs.chmodSync(bin, 0o755)
   }
-  return stubBinDir
+  return dir
 }
 
 /**
@@ -100,7 +109,10 @@ function ensureStubBin(pkgManager: string): string {
  */
 function buildEnv(options: RunCliOptions): NodeJS.ProcessEnv {
   const pkgManager = options.packageManager === null ? 'npm' : (options.packageManager ?? 'npm')
-  const stubDir = options.stubPackageManager ? ensureStubBin(String(pkgManager).split('/')[0]) : undefined
+  const stub = options.stubPackageManager
+  const stubDir = stub
+    ? ensureStubBin(String(pkgManager).split('/')[0], typeof stub === 'object' ? stub.exitCode ?? 0 : 0)
+    : undefined
 
   const env: Record<string, string | undefined> = {
     // stub 目录必须排在最前面，否则会解析到真的包管理器并联网

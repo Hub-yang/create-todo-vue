@@ -378,7 +378,16 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
   }
 
   if (immediate) {
-    install(root, pkgManager)
+    const status = install(root, pkgManager)
+    if (status !== 0) {
+      // 装不上**不回滚已经生成的项目**——用户要的东西已经在那儿了，删掉只会让他白等。
+      // 所以这里要说清两件事：装依赖失败了，以及项目还在、可以自己补装。
+      prompts.log.warn(`项目已创建，但依赖没装上。${pkgManager} 退出码 ${status}`)
+      prompts.log.info(buildDoneMessage(cwd, root, pkgManager))
+      terminal.close('依赖安装失败')
+      // 原样透传包管理器的退出码：压成 1 会让调用方分不清「装不上」和「参数写错」
+      return status
+    }
   }
 
   // 两支形状刻意一致：收尾信息走 log.info，框由 close() 统一收（CTV-34）。

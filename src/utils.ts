@@ -2,7 +2,6 @@ import type { SpawnOptions } from 'node:child_process'
 import type { FrameworkVariant } from './constants'
 import fs from 'node:fs'
 import path from 'node:path'
-import process from 'node:process'
 import * as prompts from '@clack/prompts'
 import { log } from '@clack/prompts'
 import spawn from 'cross-spawn'
@@ -245,23 +244,38 @@ export function getRunCommand(pkgManager: string, script: string) {
   return pkgManager === 'yarn' ? [pkgManager, script] : [pkgManager, 'run', script]
 }
 
-function run([command, ...args]: string[], options?: SpawnOptions) {
+/**
+ * 跑一个子命令，把结果**交回给调用方**，自己绝不退出进程。
+ *
+ * 这里曾经是 `process.exit(status)`（CTV-39 改掉）。那样做会跳过 `runCli()` 的
+ * `finally`，于是安装失败时 clack 的框留着开、光标不恢复——CTV-34 那套
+ * 「框线有主人」的保证里唯一的漏网之鱼。`src/` 里现在没有任何 `process.exit()`。
+ * @returns 0 表示成功；非零是子命令的退出码，或命令根本跑不起来时的 1
+ */
+function run([command, ...args]: string[], options?: SpawnOptions): number {
   const { status, error } = spawn.sync(command, args, options)
 
-  if (status != null && status > 0) {
-    process.exit(status)
+  if (error) {
+    // 命令不存在、没有执行权限之类。刻意只给人话不打栈：这不是本工具的 bug，
+    // 一屏 Node 内部栈对用户没有价值（立场同 CTV-31 的非交互提示）
+    console.error(`\n${command} ${args.join(' ')} 跑不起来：${error.message}`)
+    return 1
   }
 
-  if (error) {
-    console.error(`\n${command} ${args.join(' ')} 报错！`)
-    console.error(error)
-    process.exit(1)
-  }
+  // status 为 null 只在被信号杀死时出现，那种情况也算没跑成
+  return status ?? 1
 }
 
-export function install(root: string, pkgManager: string) {
+/**
+ * 在目标目录里装依赖
+ * @param {string} root - 目标目录
+ * @param {string} pkgManager - 包管理器名
+ * @returns 包管理器的退出码，0 表示装成功。**原样透传**——压成 1 会让调用方
+ * 分不清「装不上」和「参数写错」，而且那是既有行为（实测退 7 会原样出去）
+ */
+export function install(root: string, pkgManager: string): number {
   log.step(`使用 ${pkgManager} 安装依赖...`)
-  run(getInstallCommand(pkgManager), {
+  return run(getInstallCommand(pkgManager), {
     stdio: 'inherit',
     cwd: root,
   })
