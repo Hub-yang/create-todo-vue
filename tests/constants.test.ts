@@ -76,6 +76,29 @@ describe('模板注册表', () => {
     }
   })
 
+  /**
+   * CTV-16 / CTV-05：README 的「当前可用模板」是第三份手写清单。
+   *
+   * 它没法在构建期生成（静态 markdown，生成会引入构建步骤），但可以把**静默漂移
+   * 变成红测试**——加了模板不更新 README，这条就红。
+   *
+   * 这不是恒等式：两边是**不同的源**（面向用户的文档 vs 代码里的注册表），
+   * 与 `collectKnownFlags` 对 `HELP_MESSAGE` 那条同理。
+   */
+  it('rEADME 的「当前可用模板」与 TEMPLATES 一致', () => {
+    const readme = fs.readFileSync(path.join(repoRoot, 'README.md'), 'utf-8')
+    const section = readme.split('#### 🟢 当前可用模板')[1]?.split('###')[0]
+    expect(section, 'README 里找不到「当前可用模板」区块，解析规则失灵了').toBeTruthy()
+
+    // 只取行首列表项里反引号包住的模板名，避免把说明文字里的其它代码片段算进来
+    const listed = [...section!.matchAll(/^- `([^`]+)`(?: \/ `([^`]+)`)?/gm)]
+      .flatMap(m => [m[1], m[2]])
+      .filter(Boolean)
+
+    expect([...listed].sort(), 'README 与 TEMPLATES 对不上，加删模板时漏改了 README')
+      .toEqual([...TEMPLATES].sort())
+  })
+
   // help 里「可用模板」区块的所有词。**按空白切成词、而不是拿 HELP_MESSAGE 做子串匹配**：
   // 模板名之间存在包含关系（`custom-vitesse` 是 `custom-vitesse-lite` 的子串，`vue` 是
   // `vue-ts` 的子串），子串匹配会让「漏掉短的那个」全绿蒙混过去。

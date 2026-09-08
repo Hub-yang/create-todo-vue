@@ -1,4 +1,5 @@
 import colors from 'picocolors'
+import { renderTemplateList } from '../help'
 
 type ColorFunc = (st: string | number) => string
 
@@ -17,26 +18,6 @@ interface Framework {
 }
 
 const { green, yellow, blue, redBright, greenBright } = colors
-
-export const HELP_MESSAGE = `\
-用法: @huberyyang/create-todo-vue [参数]... [目录]
-
-快速创建vue模板
-
-参数:
-  -h, --help                            查看帮助
-  -v, --version                         查看版本号
-  -t, --template                        指定模板
-  -i, --immediate                       创建后立即安装依赖
-  --overwrite                           是否覆盖创建
-  --package-name                        指定 package.json 的 name
-
-可用模板:
-${yellow('vanilla-ts    vanilla')}
-${green('vue-ts        vue')}
-${green('custom-create-vue    custom-nuxt          custom-vike-vue')}
-${green('custom-vitesse       custom-vitesse-lite')}
-${redBright('lit-ts        lit')}`
 
 export const DEFAULT_TARGET_DIR = 'vue-project'
 
@@ -147,6 +128,31 @@ export const FRAMEWORKS: Framework[] = [
     ],
   },
 ]
+
+/**
+ * 帮助信息。
+ *
+ * 「可用模板」那一块**由 `FRAMEWORKS` 派生**（CTV-16），不再手写——加删模板时
+ * 它自动跟上，CTV-05 那类漂移在结构上不可能再发生。
+ *
+ * 「参数」那一块仍是手写的，那属于另一件事（参数元数据外置），
+ * 且已有 `ARGV_OPTIONS ↔ HELP_MESSAGE` 的双向断言盯着（见 tests/constants.test.ts）。
+ */
+export const HELP_MESSAGE = `\
+用法: @huberyyang/create-todo-vue [参数]... [目录]
+
+快速创建vue模板
+
+参数:
+  -h, --help                            查看帮助
+  -v, --version                         查看版本号
+  -t, --template                        指定模板
+  -i, --immediate                       创建后立即安装依赖
+  --overwrite                           是否覆盖创建
+  --package-name                        指定 package.json 的 name
+
+可用模板:
+${renderTemplateList(FRAMEWORKS)}`
 
 export const TEMPLATES = FRAMEWORKS.flatMap((f) => {
   if (f.variants?.length)
