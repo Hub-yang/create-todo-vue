@@ -11,6 +11,7 @@ import {
   planTemplateFiles,
   replaceHtmlTitle,
   resolveArgTemplate,
+  resolvePackageName,
   withPackageName,
 } from '../src/plan'
 
@@ -103,6 +104,77 @@ describe('derivePackageName', () => {
       name: 'other-app',
       needsPrompt: false,
     })
+  })
+})
+
+/**
+ * CTV-31 · B1：`--package-name` 让「参数齐全就能全程无交互」第一次成为真的。
+ *
+ * 在它之前，包名是脚手架里**唯一**一个给不出参数的提问点——只要目录名推不出合法包名
+ * （`My App`、`.foo`），非交互调用就必然停在那里，而且没有任何 flag 能救。
+ *
+ * 三条语义各自有明确理由，不要随手改：
+ * - **显式优先于推导**：传了就用，哪怕目录名本身推得出合法包名。否则「给了参数却被
+ *   忽略」是另一种撒谎。
+ * - **非法值报错而不是静默修正**：与 CTV-17 的未知参数校验同一个立场——用户打错了
+ *   要告诉他，别替他猜。真想要自动修正的人可以自己不传这个参数。
+ * - **空串按非法处理**：`--package-name` 不带值时 mri 会给 `''`（实测），
+ *   那是「用户想传但传漏了」，不是「用户没传」。
+ */
+describe('resolvePackageName', () => {
+  it('没传 --package-name 时回落到从目录名推导', () => {
+    expect(resolvePackageName(undefined, 'my-app', '/home/u')).toEqual({
+      name: 'my-app',
+      needsPrompt: false,
+      invalid: false,
+    })
+  })
+
+  it('没传时目录名推不出合法包名，仍然要求追问', () => {
+    expect(resolvePackageName(undefined, 'My App', '/home/u')).toEqual({
+      name: 'My App',
+      needsPrompt: true,
+      invalid: false,
+    })
+  })
+
+  it('传了合法包名就用它，并且不再追问', () => {
+    expect(resolvePackageName('my-pkg', 'My App', '/home/u')).toEqual({
+      name: 'my-pkg',
+      needsPrompt: false,
+      invalid: false,
+    })
+  })
+
+  it('目录名本来就合法时，显式参数照样优先', () => {
+    expect(resolvePackageName('other-name', 'my-app', '/home/u')).toEqual({
+      name: 'other-name',
+      needsPrompt: false,
+      invalid: false,
+    })
+  })
+
+  it('scope 包名是合法的', () => {
+    expect(resolvePackageName('@scope/pkg', 'my-app', '/home/u')).toEqual({
+      name: '@scope/pkg',
+      needsPrompt: false,
+      invalid: false,
+    })
+  })
+
+  it('传了非法包名时报无效，不静默修正成 my-pkg', () => {
+    const result = resolvePackageName('My Pkg', 'my-app', '/home/u')
+
+    expect(result.invalid).toBe(true)
+    expect(result.name).not.toBe('my-pkg')
+  })
+
+  it('空串按非法处理——那是 --package-name 没带值，不是没传', () => {
+    expect(resolvePackageName('', 'my-app', '/home/u').invalid).toBe(true)
+  })
+
+  it('非法时不要求追问——追问在非交互环境下同样走不通，该直接报错', () => {
+    expect(resolvePackageName('My Pkg', 'my-app', '/home/u').needsPrompt).toBe(false)
   })
 })
 

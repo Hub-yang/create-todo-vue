@@ -40,6 +40,9 @@ npm create @huberyyang/todo-vue vue-project --overwrite -t vue-ts -i
 
 # 只创建，不装依赖（适合 CI 或脚本调用）
 npm create @huberyyang/todo-vue vue-project --overwrite -t vue-ts --no-immediate
+
+# 目录名推不出合法的包名时（如 My App、.foo），用 --package-name 补上
+npm create @huberyyang/todo-vue .foo --overwrite -t vue-ts --no-immediate --package-name my-pkg
 ```
 
 #### 🔵 参数说明
@@ -51,8 +54,9 @@ npm create @huberyyang/todo-vue vue-project --overwrite -t vue-ts --no-immediate
 - `-i, --immediate` 创建后立即安装依赖，装完会打印启动命令
 - `--no-immediate` 创建后不安装依赖，只打印后续步骤（不加这两个 flag 时会询问）
 - `--overwrite` 目标已存在时直接覆盖，不再询问：目录会被清空（`.git` 保留），同名文件会被删除
+- `--package-name` 指定 `package.json` 的 `name`；不传则取目录名，目录名不是合法包名时会询问
 
-传入未声明的参数会直接报错退出，并列出拼错的那个。
+传入未声明的参数会直接报错退出，并列出拼错的那个。`--package-name` 的值不合法时同样直接报错，**不会**替你静默改成一个合法的。
 
 #### 🟡 退出码
 
@@ -63,10 +67,11 @@ npm create @huberyyang/todo-vue vue-project --overwrite -t vue-ts --no-immediate
 | `0` | 创建成功；`-h` / `-v` 同样返回 0 |
 | `1` | 操作被取消、参数有误，或创建过程中出错 |
 
-两点值得单独说明，它们在 `v1.2.0` 之前的行为不同：
+几点值得单独说明：
 
-- **取消操作返回 1。** 既包括交互式按 <kbd>Ctrl</kbd>+<kbd>C</kbd>，也包括在非交互环境（CI、脚本）下走到了需要输入的提示。后者以前返回 `0`，调用方会把「什么都没创建」误判成创建成功。
-- **拼错的参数会被指出来。** 以前拼错的 flag 会被静默忽略，而且它还会把紧跟其后的目录名当成自己的值吃掉——`--overwirte my-app` 连项目名都会丢，CLI 转而追问项目名称，用户看不出哪里写错了。
+- **取消操作返回 1。**（`v1.2.0` 起）既包括交互式按 <kbd>Ctrl</kbd>+<kbd>C</kbd>，也包括在非交互环境（CI、脚本）下走到了需要输入的提示。后者以前返回 `0`，调用方会把「什么都没创建」误判成创建成功。
+- **拼错的参数会被指出来。**（`v1.2.0` 起）以前拼错的 flag 会被静默忽略，而且它还会把紧跟其后的目录名当成自己的值吃掉——`--overwirte my-app` 连项目名都会丢，CLI 转而追问项目名称，用户看不出哪里写错了。
+- **非交互环境下会说清楚卡在哪。** 在 CI、脚本或 `< /dev/null` 之类拿不到输入的环境里走到提示时，会打印当前卡在哪一步、以及该改用哪个参数，然后返回 `1`。此前这里只会留下一个画到一半的选择器，没有任何解释。
 
 #### 🟢 当前可用模板
 

@@ -75,7 +75,7 @@ describe('模块入口', () => {
     await main(['--help'])
 
     expect(ARGV_OPTIONS.boolean).toEqual(['help', 'version', 'overwrite', 'immediate'])
-    expect(ARGV_OPTIONS.string).toEqual(['template'])
+    expect(ARGV_OPTIONS.string).toEqual(['template', 'package-name'])
     expect(ARGV_OPTIONS.alias).toEqual({ h: 'help', v: 'version', t: 'template', i: 'immediate' })
   })
 

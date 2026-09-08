@@ -6,24 +6,27 @@ import * as prompts from '@clack/prompts'
 import spawn from 'cross-spawn'
 import mri from 'mri'
 import { ARGV_OPTIONS, DEFAULT_TARGET_DIR, FRAMEWORKS, HELP_MESSAGE, RENAME_FILES, TEMPLATES } from './constants'
+import { ask, NonInteractiveError } from './interactive'
 import {
   buildCustomCommandArgs,
   buildDoneMessage,
   collectKnownFlags,
-  derivePackageName,
   findUnknownFlags,
   findVariantCommand,
   resolveArgTemplate,
+  resolvePackageName,
 } from './plan'
 import { scaffoldTemplate } from './scaffold'
 import { cancel, emptyDir, formatTargetDir, getFullCustomCommand, getLabel, getVersion, install, isEmpty, isValidPackageName, pathKind, pkgFromUserAgent, toValidPackageName } from './utils'
 
 interface Options {
-  template?: string
-  help?: boolean
-  version?: boolean
-  overwrite?: boolean
-  immediate?: boolean
+  'template'?: string
+  'help'?: boolean
+  'version'?: boolean
+  'overwrite'?: boolean
+  'immediate'?: boolean
+  /** 连字符命名，与命令行写法一致——mri 不做 camelCase 转换（实测） */
+  'package-name'?: string
 }
 
 /**
@@ -88,6 +91,7 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
   const argOverwrite = argv.overwrite
   const argTemplate = argv.template
   const argImmediate = argv.immediate
+  const argPackageName = argv['package-name']
 
   const help = argv.help
   if (help) {
@@ -118,17 +122,39 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
   // 1.获取项目名称和目标目录
   let targetDir = argTargetDir
   if (!targetDir) {
-    const projectName = await prompts.text({
-      message: '项目名称:',
-      defaultValue: DEFAULT_TARGET_DIR,
-      placeholder: DEFAULT_TARGET_DIR,
-      validate(value) {
-        return !value || formatTargetDir(value).length > 0 ? undefined : '项目名称无效'
-      },
-    })
+    const projectName = await ask(
+      prompts.text({
+        message: '项目名称:',
+        defaultValue: DEFAULT_TARGET_DIR,
+        placeholder: DEFAULT_TARGET_DIR,
+        validate(value) {
+          return !value || formatTargetDir(value).length > 0 ? undefined : '项目名称无效'
+        },
+      }),
+      '项目名称',
+      '把项目名作为位置参数传入，如 create-todo-vue my-app',
+    )
     if (prompts.isCancel(projectName))
       return cancelled()
     targetDir = formatTargetDir(projectName)
+  }
+
+  /**
+   * 包名在这里就解析，而不是等到下面第 3 步。
+   *
+   * 理由是**校验必须排在任何破坏性操作之前**：放到第 3 步再判的话，第 2 步的
+   * `--overwrite` 会先把目标目录清空，然后才告诉用户 `--package-name` 写错了——
+   * 用户为一个打字错误付出整个目录。真正的**提问**仍留在第 3 步，那才是它在交互
+   * 流程里该出现的位置（先确认要不要覆盖，再问叫什么名字）。
+   */
+  const pkgName = resolvePackageName(argPackageName, targetDir, cwd)
+  if (pkgName.invalid) {
+    // 刻意不用 toValidPackageName() 静默修正：立场与未知参数校验一致（CTV-17），
+    // 用户显式传错了要告诉他。想要自动修正的人不传这个参数就是了。
+    // 走明文而不是 clack：与「未知参数」同属命令行本身不对，形态保持一致。
+    console.error(`无效的 package.json name：${argPackageName}`)
+    console.error('包名规则见 https://docs.npmjs.com/cli/configuring-npm/package-json#name')
+    return EXIT_USAGE
   }
 
   /**
@@ -153,19 +179,26 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
     let removeExistingFile = Boolean(argOverwrite)
 
     if (!removeExistingFile) {
-      const res = await prompts.select({
-        message: `${targetDir} 已存在且是一个文件，请选择如何继续`,
-        options: [
-          {
-            label: '取消操作',
-            value: 'no',
-          },
-          {
-            label: '删除该文件并继续',
-            value: 'yes',
-          },
-        ],
-      })
+      // 显式钉住 Value：clack 的 `select<Value>` 从 options 推断 Value，而这个调用
+      // 被包进 ask() 的参数位之后，字面量联合会被推宽成 string，于是 'yes' 写成 'yess'
+      // 也照样编译。两处菜单都标上。
+      const res = await ask(
+        prompts.select<'no' | 'yes'>({
+          message: `${targetDir} 已存在且是一个文件，请选择如何继续`,
+          options: [
+            {
+              label: '取消操作',
+              value: 'no',
+            },
+            {
+              label: '删除该文件并继续',
+              value: 'yes',
+            },
+          ],
+        }),
+        `${targetDir} 已存在且是一个文件`,
+        '--overwrite（会删除该文件）',
+      )
       if (prompts.isCancel(res)) {
         return cancelled()
       }
@@ -183,23 +216,27 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
     let overwrite: 'yes' | 'no' | 'ignore' | undefined = argOverwrite ? 'yes' : undefined
 
     if (!overwrite) {
-      const res = await prompts.select({
-        message: `${targetDir === '.' ? '当前目录' : `目标目录${targetDir}`} 不为空，请选择如何继续`,
-        options: [
-          {
-            label: '取消操作',
-            value: 'no',
-          },
-          {
-            label: '删除现有文件并继续',
-            value: 'yes',
-          },
-          {
-            label: '忽略文件并继续',
-            value: 'ignore',
-          },
-        ],
-      })
+      const res = await ask(
+        prompts.select<'no' | 'yes' | 'ignore'>({
+          message: `${targetDir === '.' ? '当前目录' : `目标目录${targetDir}`} 不为空，请选择如何继续`,
+          options: [
+            {
+              label: '取消操作',
+              value: 'no',
+            },
+            {
+              label: '删除现有文件并继续',
+              value: 'yes',
+            },
+            {
+              label: '忽略文件并继续',
+              value: 'ignore',
+            },
+          ],
+        }),
+        `${targetDir === '.' ? '当前目录' : `目标目录${targetDir}`} 不为空`,
+        '--overwrite（会清空该目录，.git 保留）',
+      )
       if (prompts.isCancel(res)) {
         return cancelled()
       }
@@ -215,21 +252,23 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
     }
   }
 
-  // 3. 获取包名
-  // 取目标目录名作为默认package.json name
-  const derived = derivePackageName(targetDir, cwd)
-  let packageName = derived.name
-  if (derived.needsPrompt) {
-    const packageNameResult = await prompts.text({
-      message: '请输入package.json name',
-      defaultValue: toValidPackageName(packageName),
-      placeholder: toValidPackageName(packageName),
-      validate(dir) {
-        if (dir && !isValidPackageName(dir)) {
-          return '无效的package.json name'
-        }
-      },
-    })
+  // 3. 获取包名。解析与校验已在第 2 步之前做完（见上），这里只负责需要时追问
+  let packageName = pkgName.name
+  if (pkgName.needsPrompt) {
+    const packageNameResult = await ask(
+      prompts.text({
+        message: '请输入package.json name',
+        defaultValue: toValidPackageName(packageName),
+        placeholder: toValidPackageName(packageName),
+        validate(dir) {
+          if (dir && !isValidPackageName(dir)) {
+            return '无效的package.json name'
+          }
+        },
+      }),
+      'package.json name',
+      '--package-name <name>',
+    )
     if (prompts.isCancel(packageNameResult))
       return cancelled()
     packageName = packageNameResult
@@ -242,37 +281,45 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
   )
   let template = argResolvedTemplate
   if (!template) {
-    const framework = await prompts.select({
-      message: hasInvalidArgTemplate
-        ? `${argTemplate}不是有效的模板名，请从以下选取：`
-        : '选择模板',
-      options: FRAMEWORKS.map((f) => {
-        const { color, name, display } = f
-        return {
-          label: color(display || name),
-          value: f,
-        }
+    const framework = await ask(
+      prompts.select({
+        message: hasInvalidArgTemplate
+          ? `${argTemplate}不是有效的模板名，请从以下选取：`
+          : '选择模板',
+        options: FRAMEWORKS.map((f) => {
+          const { color, name, display } = f
+          return {
+            label: color(display || name),
+            value: f,
+          }
+        }),
       }),
-    })
+      '选择模板',
+      '-t <模板名>，可用模板见 --help',
+    )
     if (prompts.isCancel(framework))
       return cancelled()
     template = framework.name
 
     if (framework.variants?.length) {
-      const variant = await prompts.select({
-        message: '选择预设',
-        options: framework.variants.map((v) => {
-          const { name, customCommand } = v
-          const command = customCommand
-            ? getFullCustomCommand(customCommand, pkgInfo).replace(/ TARGET_DIR$/, '')
-            : undefined
-          return {
-            label: getLabel(v),
-            value: name,
-            hint: command,
-          }
+      const variant = await ask(
+        prompts.select({
+          message: '选择预设',
+          options: framework.variants.map((v) => {
+            const { name, customCommand } = v
+            const command = customCommand
+              ? getFullCustomCommand(customCommand, pkgInfo).replace(/ TARGET_DIR$/, '')
+              : undefined
+            return {
+              label: getLabel(v),
+              value: name,
+              hint: command,
+            }
+          }),
         }),
-      })
+        '选择预设',
+        '-t <模板名>，可用模板见 --help',
+      )
       if (prompts.isCancel(variant))
         return cancelled()
       template = variant
@@ -306,9 +353,13 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
   let immediate = argImmediate
 
   if (immediate === undefined) {
-    const immediateResult = await prompts.confirm({
-      message: `是否立即使用${pkgManager}安装依赖？`,
-    })
+    const immediateResult = await ask(
+      prompts.confirm({
+        message: `是否立即使用${pkgManager}安装依赖？`,
+      }),
+      '是否立即安装依赖',
+      '-i（装）或 --no-immediate（不装）',
+    )
     if (prompts.isCancel(immediateResult))
       return cancelled()
     immediate = immediateResult
@@ -350,6 +401,21 @@ export async function runCli(): Promise<void> {
     process.exitCode = await main()
   }
   catch (e) {
+    // 参数没给全**不是 bug**，所以在真正的崩溃兜底之前分流出去：不打调用栈、
+    // 不说「创建失败」，只说清楚卡在哪一步、该改用哪个参数。
+    // 退出码沿用函数开头预置的 EXIT_CANCELLED——语义仍是「没有成功创建」。
+    if (e instanceof NonInteractiveError) {
+      // 一条 log.error 里换行，而不是三条 log.*：clack 会给续行加 `│` 前缀，
+      // 三条会被框线拆成三块、中间还各夹一条空的 `│`，读起来散
+      prompts.log.error(
+        `需要交互才能继续，但输入已结束（非 TTY，或输入已读完）\n`
+        + `这一步在问：${e.step}\n`
+        + `非交互环境请改用：${e.hint}`,
+      )
+      cancel()
+      return
+    }
+
     // spinner 若仍在转，先收掉，否则报错信息会被它的重绘覆盖。
     // 未 start 过时调用 error() 也是安全的（已实测），所以无需额外判状态。
     spin.error('创建失败')

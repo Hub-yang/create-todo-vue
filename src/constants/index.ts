@@ -29,6 +29,7 @@ export const HELP_MESSAGE = `\
   -t, --template                        指定模板
   -i, --immediate                       创建后立即安装依赖
   --overwrite                           是否覆盖创建
+  --package-name                        指定 package.json 的 name
 
 可用模板:
 ${yellow('vanilla-ts    vanilla')}
@@ -52,7 +53,7 @@ export const DEFAULT_TARGET_DIR = 'vue-project'
 export const ARGV_OPTIONS = {
   boolean: ['help', 'version', 'overwrite', 'immediate'],
   alias: { h: 'help', v: 'version', t: 'template', i: 'immediate' },
-  string: ['template'],
+  string: ['template', 'package-name'],
 }
 
 export const FRAMEWORKS: Framework[] = [
