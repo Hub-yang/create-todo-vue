@@ -1,5 +1,7 @@
 import type { Fixture } from './fixture'
 import { spawn } from 'node:child_process'
+import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
@@ -12,6 +14,13 @@ export interface CliResult {
   exitCode: number
   /** 已剥掉 ANSI，断言可以直接匹配子串 */
   stdout: string
+  /**
+   * **未剥离**的 stdout。
+   *
+   * 只在断言转义序列本身时才用它——比如「光标隐藏了必须恢复」（CTV-36）：
+   * `stdout` 把 `ESC[?25l` / `ESC[?25h` 一并剥掉了，拿它断言光标永远是空。
+   */
+  stdoutRaw: string
   stderr: string
   timedOut: boolean
 }
@@ -43,6 +52,40 @@ export interface RunCliOptions {
    * 「选了取消就不该动文件」之类的断言都会假绿——它们通过与那段代码毫无关系。
    */
   respondAfterStdout?: { after: string, send: string }
+  /**
+   * 在 PATH 最前面放一个立刻成功返回的假包管理器。
+   *
+   * 解锁的是两条此前**完全没有 E2E 覆盖**的路径：`install()`（`-i`）与 customCommand
+   * （转交上游脚手架）。它们都靠 `cross-spawn` 按 PATH 解析命令名，所以换掉 PATH 上的
+   * 那个可执行文件就能离线跑完整条路径。
+   *
+   * ⚠️ 它测的**不是** npm 能不能装包——那是 npm 的事，不该由本仓库的测试负责。
+   * 它测的是「我们把命令发出去之后，自己这边的收尾渲染对不对」。CLAUDE.md 里原先记着
+   * 这两块「刻意留白」，2026-09-08 做 CTV-34 时按上述边界改成覆盖。
+   */
+  stubPackageManager?: boolean
+}
+
+/**
+ * 假包管理器所在的目录。
+ *
+ * 建一次、整个 worker 共用，退出时删掉。**不能放进 fixture 目录**——
+ * `fixture.tree()` 会把它列出来，那些断言会平白多出几个文件。
+ */
+let stubBinDir: string | undefined
+
+function ensureStubBin(pkgManager: string): string {
+  if (!stubBinDir) {
+    stubBinDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ctv-e2e-stub-'))
+    process.on('exit', () => fs.rmSync(stubBinDir!, { recursive: true, force: true }))
+  }
+  const bin = path.join(stubBinDir, pkgManager)
+  if (!fs.existsSync(bin)) {
+    // 把收到的参数原样回显，方便失败时看出到底发了什么命令
+    fs.writeFileSync(bin, `#!/bin/sh\necho "[stub ${pkgManager}] $*"\nexit 0\n`)
+    fs.chmodSync(bin, 0o755)
+  }
+  return stubBinDir
 }
 
 /**
@@ -56,8 +99,14 @@ export interface RunCliOptions {
  *   但固定住能让失败时打印的输出可读。
  */
 function buildEnv(options: RunCliOptions): NodeJS.ProcessEnv {
+  const pkgManager = options.packageManager === null ? 'npm' : (options.packageManager ?? 'npm')
+  const stubDir = options.stubPackageManager ? ensureStubBin(String(pkgManager).split('/')[0]) : undefined
+
   const env: Record<string, string | undefined> = {
-    PATH: [path.dirname(process.execPath), '/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(':'),
+    // stub 目录必须排在最前面，否则会解析到真的包管理器并联网
+    PATH: [stubDir, path.dirname(process.execPath), '/usr/bin', '/bin', '/usr/sbin', '/sbin']
+      .filter(Boolean)
+      .join(':'),
     HOME: process.env.HOME,
     TMPDIR: process.env.TMPDIR,
     LANG: 'en_US.UTF-8',
@@ -157,6 +206,7 @@ export function runCli(
       resolve({
         exitCode: code ?? (timedOut ? -1 : 0),
         stdout: stripVTControlCharacters(stdout),
+        stdoutRaw: stdout,
         stderr: stripVTControlCharacters(stderr),
         timedOut,
       })
