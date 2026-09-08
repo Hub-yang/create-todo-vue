@@ -29,12 +29,7 @@
   "files": [
     "bin",
     "dist",
-    "template-lit",
-    "template-lit-ts",
-    "template-vanilla",
-    "template-vanilla-ts",
-    "template-vue",
-    "template-vue-ts"
+    "template-*/**"
   ],
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
