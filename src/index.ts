@@ -13,10 +13,12 @@ import {
   collectKnownFlags,
   findUnknownFlags,
   findVariantCommand,
+  isArgPackageNameValid,
   resolveArgTemplate,
   resolvePackageName,
 } from './plan'
 import { scaffoldTemplate } from './scaffold'
+import { createTerminal } from './terminal'
 import { cancel, emptyDir, formatTargetDir, getFullCustomCommand, getLabel, getVersion, install, isEmpty, isValidPackageName, pathKind, pkgFromUserAgent, toValidPackageName } from './utils'
 
 interface Options {
@@ -52,6 +54,15 @@ const PACKAGE_ROOT = path.resolve(ENTRY_FILE, '../..')
  */
 const spin = prompts.spinner()
 
+/**
+ * 终端状态的主人：框线开着没有、光标要不要还原，都记在它这里。
+ *
+ * 和 `spin` 一样保持模块级，因为 `runCli()` 的 `finally` 需要够得着它。
+ * 那个 `finally` 是这套设计的关键——`main()` 有 7 类退出路径，逐个补收尾必漏
+ * （实测 6 条路径里 4 条框只开不关，CTV-31 自己刚又漏了一处）。
+ */
+const terminal = createTerminal()
+
 /** 正常跑完 */
 const EXIT_OK = 0
 /**
@@ -67,6 +78,9 @@ const EXIT_USAGE = 1
 /** 打印取消提示并给出非零退出码。7 处取消点共用，避免漏掉某一处的返回值 */
 function cancelled(): number {
   cancel()
+  // cancel() 自己就打了一行 `└  操作已取消`，框已经收在它手里。
+  // 不认领的话 runCli 的 finally 会再补一个 `└`，取消路径就多出一条空收尾。
+  terminal.markClosed()
   return EXIT_CANCELLED
 }
 
@@ -115,7 +129,16 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
     return EXIT_USAGE
   }
 
-  prompts.intro('create-todo-vue')
+  // 与未知参数同属「命令行本身就不对」，所以挨着它、并且同样排在开框之前。
+  // 位置是关键：一旦排到 intro() 之后，报错会打在框外、`┌` 永远等不到 `└`（CTV-37）；
+  // 排到第 2 步之后更糟——`--overwrite` 会先把目录清空再告诉用户参数写错了。
+  if (!isArgPackageNameValid(argPackageName)) {
+    console.error(`无效的 package.json name：${argPackageName}`)
+    console.error('包名规则见 https://docs.npmjs.com/cli/configuring-npm/package-json#name')
+    return EXIT_USAGE
+  }
+
+  terminal.open('create-todo-vue')
 
   const pkgInfo = pkgFromUserAgent(process.env.npm_config_user_agent)
 
@@ -139,23 +162,8 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
     targetDir = formatTargetDir(projectName)
   }
 
-  /**
-   * 包名在这里就解析，而不是等到下面第 3 步。
-   *
-   * 理由是**校验必须排在任何破坏性操作之前**：放到第 3 步再判的话，第 2 步的
-   * `--overwrite` 会先把目标目录清空，然后才告诉用户 `--package-name` 写错了——
-   * 用户为一个打字错误付出整个目录。真正的**提问**仍留在第 3 步，那才是它在交互
-   * 流程里该出现的位置（先确认要不要覆盖，再问叫什么名字）。
-   */
+  // 合法性早在开框之前就判过了，这里只负责推导
   const pkgName = resolvePackageName(argPackageName, targetDir, cwd)
-  if (pkgName.invalid) {
-    // 刻意不用 toValidPackageName() 静默修正：立场与未知参数校验一致（CTV-17），
-    // 用户显式传错了要告诉他。想要自动修正的人不传这个参数就是了。
-    // 走明文而不是 clack：与「未知参数」同属命令行本身不对，形态保持一致。
-    console.error(`无效的 package.json name：${argPackageName}`)
-    console.error('包名规则见 https://docs.npmjs.com/cli/configuring-npm/package-json#name')
-    return EXIT_USAGE
-  }
 
   /**
    * 目标目录的绝对路径，**从这里往下一律用它**，不要再用 `targetDir`。
@@ -333,10 +341,14 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
   if (customCommand) {
     const fullCustomCommand = getFullCustomCommand(customCommand, pkgInfo)
     const { command, args } = buildCustomCommandArgs(fullCustomCommand, targetDir)
+    // 先把自己的框收掉再把终端交出去：上游脚手架有它自己的交互界面，
+    // 套在我们半截框里既难看，也让 `┌` 永远等不到 `└`。
+    terminal.close(`转交给 ${command}`)
     const { status } = spawn.sync(command, args, {
       stdio: 'inherit',
     })
-    process.exit(status ?? 0)
+    // 刻意不是 process.exit()：那会跳过 runCli 的 finally，收尾兜底就形同虚设
+    return status ?? EXIT_OK
   }
 
   // 不存在安装指令，则使用内置模板安装
@@ -367,15 +379,13 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
 
   if (immediate) {
     install(root, pkgManager)
-    // 装完依赖的人更需要知道怎么把项目跑起来。刻意用 log.* 而不是 outro()：
-    // 补上缺失的收尾框线是另一件事（CTV-34），混在这里会让两条各自没法独立验证。
-    prompts.log.info(buildDoneMessage(cwd, root, pkgManager, true))
-  }
-  else {
-    prompts.outro(buildDoneMessage(cwd, root, pkgManager))
   }
 
-  prompts.log.success('程序结束')
+  // 两支形状刻意一致：收尾信息走 log.info，框由 close() 统一收（CTV-34）。
+  // 此前装依赖那支压根没调 outro（框只开不关），不装那支调了 outro 却又在框关掉之后
+  // 打了一句「程序结束」，于是那行落在 `└` 外面——同一个病的两半。
+  prompts.log.info(buildDoneMessage(cwd, root, pkgManager, immediate))
+  terminal.close('程序结束')
 
   return EXIT_OK
 }
@@ -413,6 +423,7 @@ export async function runCli(): Promise<void> {
         + `非交互环境请改用：${e.hint}`,
       )
       cancel()
+      terminal.markClosed()
       return
     }
 
@@ -420,10 +431,22 @@ export async function runCli(): Promise<void> {
     // 未 start 过时调用 error() 也是安全的（已实测），所以无需额外判状态。
     spin.error('创建失败')
     prompts.log.error(e instanceof Error ? e.message : String(e))
+    // 收框排在打栈**之前**：调用栈走 stderr，用户加了 2>&1 时它才会落在 `└` 之后
+    // 而不是插进框里（CTV-34）
+    terminal.close('已中止')
     // 原始栈对定位仍有价值，但不该是用户看到的第一屏
     if (e instanceof Error && e.stack) {
       console.error(e.stack)
     }
-    process.exit(1)
+    // 刻意不是 process.exit(1)：那既会跳过下面的 finally，也会截断还没冲刷完的 stdout
+    process.exitCode = 1
+  }
+  finally {
+    // 兜底。上面每条路径都该自己收好尾，但**「都该」不等于「都会」**——
+    // 实测改之前 6 条路径里有 4 条框只开不关。close() 是幂等的，收过就是空操作；
+    // 没收过的话这里补一个光秃秃的 `└`，至少框是完整的。
+    // 光标同理：clack 的 prompt 挂起时写了 ESC[?25l，永不 settle 时它自己不会收。
+    terminal.close()
+    terminal.restoreCursor()
   }
 }

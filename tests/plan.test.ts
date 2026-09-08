@@ -8,6 +8,7 @@ import {
   derivePackageName,
   findUnknownFlags,
   findVariantCommand,
+  isArgPackageNameValid,
   planTemplateFiles,
   replaceHtmlTitle,
   resolveArgTemplate,
@@ -126,7 +127,6 @@ describe('resolvePackageName', () => {
     expect(resolvePackageName(undefined, 'my-app', '/home/u')).toEqual({
       name: 'my-app',
       needsPrompt: false,
-      invalid: false,
     })
   })
 
@@ -134,7 +134,6 @@ describe('resolvePackageName', () => {
     expect(resolvePackageName(undefined, 'My App', '/home/u')).toEqual({
       name: 'My App',
       needsPrompt: true,
-      invalid: false,
     })
   })
 
@@ -142,7 +141,6 @@ describe('resolvePackageName', () => {
     expect(resolvePackageName('my-pkg', 'My App', '/home/u')).toEqual({
       name: 'my-pkg',
       needsPrompt: false,
-      invalid: false,
     })
   })
 
@@ -150,7 +148,6 @@ describe('resolvePackageName', () => {
     expect(resolvePackageName('other-name', 'my-app', '/home/u')).toEqual({
       name: 'other-name',
       needsPrompt: false,
-      invalid: false,
     })
   })
 
@@ -158,23 +155,39 @@ describe('resolvePackageName', () => {
     expect(resolvePackageName('@scope/pkg', 'my-app', '/home/u')).toEqual({
       name: '@scope/pkg',
       needsPrompt: false,
-      invalid: false,
     })
   })
+})
 
-  it('传了非法包名时报无效，不静默修正成 my-pkg', () => {
-    const result = resolvePackageName('My Pkg', 'my-app', '/home/u')
-
-    expect(result.invalid).toBe(true)
-    expect(result.name).not.toBe('my-pkg')
+/**
+ * CTV-37：校验从 `resolvePackageName` 里拆出来，因为两件事的**时机**不同。
+ *
+ * 「用户传的值合不合法」和 `targetDir` 毫无关系，所以它能——也**必须**——排在
+ * `intro()` 开框、以及任何破坏性操作之前跑。挤在 `resolvePackageName` 里的时候做不到：
+ * 那个函数要等 `targetDir` 才能调，而 `targetDir` 可能来自开框之后的提问，
+ * 结果就是先画出框、再打一句框外的报错，`┌` 永远没有 `└`（实测过）。
+ *
+ * 拆开之后两个函数各管一件事，也就没有「返回了 invalid 却没人看」的死分支。
+ */
+describe('isArgPackageNameValid', () => {
+  it('没传就是合法的——没传不是错', () => {
+    expect(isArgPackageNameValid(undefined)).toBe(true)
   })
 
-  it('空串按非法处理——那是 --package-name 没带值，不是没传', () => {
-    expect(resolvePackageName('', 'my-app', '/home/u').invalid).toBe(true)
+  it('合法包名通过', () => {
+    expect(isArgPackageNameValid('my-pkg')).toBe(true)
   })
 
-  it('非法时不要求追问——追问在非交互环境下同样走不通，该直接报错', () => {
-    expect(resolvePackageName('My Pkg', 'my-app', '/home/u').needsPrompt).toBe(false)
+  it('scope 包名通过', () => {
+    expect(isArgPackageNameValid('@scope/pkg')).toBe(true)
+  })
+
+  it('带空格、带大写的不通过', () => {
+    expect(isArgPackageNameValid('My Pkg')).toBe(false)
+  })
+
+  it('空串不通过——那是带了参数没带值，不是没传', () => {
+    expect(isArgPackageNameValid('')).toBe(false)
   })
 })
 

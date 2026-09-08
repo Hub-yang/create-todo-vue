@@ -64,32 +64,44 @@ export function derivePackageName(
 }
 
 /**
+ * 显式传入的 `--package-name` 是否可用
+ *
+ * 从 `resolvePackageName` 里**拆出来**是因为时机不同：这件事和 `targetDir` 毫无关系，
+ * 所以能——也必须——排在 `intro()` 开框、以及任何破坏性操作之前跑。挤在一起时做不到，
+ * 那个函数要等 `targetDir`，而 `targetDir` 可能来自开框之后的提问，结果是先画出框、
+ * 再打一句框外的报错，`┌` 永远等不到 `└`（CTV-37，实测过）。
+ *
+ * 非法值刻意**不**用 `toValidPackageName()` 静默修正：立场与 CTV-17 的未知参数校验
+ * 一致——用户显式传错了要告诉他。想要自动修正的人不传这个参数就是了。
+ * @param {string | undefined} argPackageName - `--package-name` 的原始取值；`undefined` 表示没传，`''` 表示带了参数没带值
+ */
+export function isArgPackageNameValid(argPackageName: string | undefined): boolean {
+  // 没传不是错；空串是「想传但漏了值」，按非法处理（正则本身也不接受空串）
+  return argPackageName === undefined || isValidPackageName(argPackageName)
+}
+
+/**
  * 定下 package.json 的 name：显式参数优先，否则回落到从目录名推导
  *
  * CTV-31 之前，包名是唯一一个**给不出参数**的提问点——目录名推不出合法包名时
- * （`My App`、`.foo`），非交互调用必然停在那里且无药可救。`--package-name` 补上它，
- * 「参数齐全就能全程无交互」这句话才第一次成立。
+ * （`My App`、`.foo`），非交互调用必然停在那里且无药可救。
  *
- * 非法值刻意**不**用 `toValidPackageName()` 静默修正：立场与 CTV-17 的未知参数校验
- * 一致——用户打错了要告诉他。想要自动修正的人不传这个参数就是了。
- * @param {string | undefined} argPackageName - `--package-name` 的原始取值；`''` 表示带了参数没带值
+ * **前置条件**：`argPackageName` 已经过 `isArgPackageNameValid` 检验。
+ * @param {string | undefined} argPackageName - `--package-name` 的取值
  * @param {string} targetDir - 目标目录，未传参数时据此推导
  * @param {string} cwd - 解析相对路径的基准目录，由入口层注入
- * @returns name 为待用包名；needsPrompt 表示要追问用户；invalid 表示显式参数本身不合法
+ * @returns name 为待用包名；needsPrompt 表示要追问用户
  */
 export function resolvePackageName(
   argPackageName: string | undefined,
   targetDir: string,
   cwd: string,
-): { name: string, needsPrompt: boolean, invalid: boolean } {
+): { name: string, needsPrompt: boolean } {
   if (argPackageName !== undefined) {
-    // 非法时把原值原样带出去，报错信息才能把用户输入的东西回显给他
-    const invalid = !isValidPackageName(argPackageName)
-    return { name: argPackageName, needsPrompt: false, invalid }
+    return { name: argPackageName, needsPrompt: false }
   }
 
-  const { name, needsPrompt } = derivePackageName(targetDir, cwd)
-  return { name, needsPrompt, invalid: false }
+  return derivePackageName(targetDir, cwd)
 }
 
 /**

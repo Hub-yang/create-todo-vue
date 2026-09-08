@@ -160,9 +160,11 @@ describe('脚手架生成', () => {
 
     expect(result.stdout).toContain('cd my-app')
     // 必须整行匹配：'pnpm install' 本身就含有子串 'npm install'，
-    // 用 toContain 断言「不含 npm install」永远会假失败
-    expect(result.stdout).toMatch(/^\s*pnpm install\s*$/m)
-    expect(result.stdout).not.toMatch(/^\s*npm install\s*$/m)
+    // 用 toContain 断言「不含 npm install」永远会假失败。
+    // 行首的 `│` 是 CTV-34 之后的框线前缀（收尾信息改走 log.info，续行带前缀），
+    // 把它算进锚点里，整行匹配的分辨力不受影响——`[│\s]*` 吃不掉 'pnpm' 的 'p'。
+    expect(result.stdout).toMatch(/^[│\s]*pnpm install\s*$/m)
+    expect(result.stdout).not.toMatch(/^[│\s]*npm install\s*$/m)
   })
 
   it('yarn 的安装命令不带 install 子命令', async () => {
@@ -173,7 +175,7 @@ describe('脚手架生成', () => {
     )
     assertOk(result, fixture)
 
-    expect(result.stdout).toMatch(/\n\s*yarn\s*$/m)
+    expect(result.stdout).toMatch(/^[│\s]*yarn\s*$/m)
     expect(result.stdout).not.toContain('yarn install')
   })
 
