@@ -99,6 +99,16 @@ describe('脚手架生成', () => {
     expect(fixture.read('my-app/.gitignore')).toContain('node_modules')
   })
 
+  // CTV-25：README 是**静态**的模板名占位，跟 package.json 的 name、index.html 的
+  // title 不同——那两处会被改写成项目名，README 刻意不改。场景让两个来源互相区分：
+  // 目录叫 my-app，模板叫 vanilla，所以「改写了」和「没改写」会得到不同的字符串。
+  it('rEADME 保持模板名占位，不被改写成项目名', async () => {
+    const result = await runCli(fixture, ['my-app', '-t', 'vanilla', ...NON_INTERACTIVE])
+    assertOk(result, fixture)
+
+    expect(fixture.read('my-app/README.md')).toBe('# vanilla\n')
+  })
+
   it.each(BUILTIN_TEMPLATES)('模板 %s 能生成出可用的项目', async (template) => {
     const result = await runCli(fixture, ['proj', '-t', template, ...NON_INTERACTIVE])
     assertOk(result, fixture)
@@ -106,6 +116,8 @@ describe('脚手架生成', () => {
     expect(fixture.exists('proj/package.json')).toBe(true)
     expect(fixture.exists('proj/index.html')).toBe(true)
     expect(fixture.exists('proj/.gitignore')).toBe(true)
+    // CTV-25 之后每个模板都该带上占位 README（此前只有 vue / vue-ts 有）
+    expect(fixture.exists('proj/README.md')).toBe(true)
     expect(fixture.readJson('proj/package.json').name).toBe('proj')
   })
 

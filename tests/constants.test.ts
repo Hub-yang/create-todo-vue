@@ -62,6 +62,21 @@ describe('模板注册表', () => {
     }
   })
 
+  // CTV-25：模板 README 一律收敛成「模板名占位」。此前只有 vue / vue-ts 两个模板
+  // 带 README，而且是 Vite 官方模板的英文原文（讲的是上游模板的事，跟用户手上这个
+  // 项目没关系），另外 4 个模板干脆一份都没有。
+  //
+  // 期望值从模板名拼出来不构成恒等式：被断言的是 README 文件的内容，期望值来自
+  // 目录名，两者是不同的源——改任一份 README 的正文都能让这条红。
+  it('每个内置模板都带一份占位 README，内容就是模板名', () => {
+    for (const name of builtinTemplates) {
+      const readme = path.join(repoRoot, `template-${name}`, 'README.md')
+      expect(fs.existsSync(readme), `template-${name} 缺少 README.md`).toBe(true)
+      expect(fs.readFileSync(readme, 'utf-8'), `template-${name}/README.md 的内容不是占位模板名`)
+        .toBe(`# ${name}\n`)
+    }
+  })
+
   // CTV-01：catalog: 是 pnpm workspace 专有协议，需要 pnpm-workspace.yaml 提供定义源。
   // 模板目录里没有那个文件，任何 catalog: 引用都会让生成的项目装不上依赖。
   it('内置模板的 package.json 不含 catalog: 协议', () => {
