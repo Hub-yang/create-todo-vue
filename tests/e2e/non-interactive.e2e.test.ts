@@ -173,6 +173,30 @@ describe('--package-name', () => {
     expect(fixture.readJson('my-app/package.json').name).toBe('other-name')
   })
 
+  /**
+   * CTV-38：包名同时写进 `package.json` 的 `name` 和 `index.html` 的 `<title>`，
+   * README 一度只说了前一半。
+   *
+   * 场景刻意挑「目录名本身就合法、但显式包名与它不同」，好让三个可能的来源互相
+   * 区分得开：目录名 `my-app`、包名 `other-name`、模板原文 `Vite + JS`。
+   * `scaffold.e2e.test.ts` 里那条 `<title>my-app</title>` 顶不上这条——它没传
+   * `--package-name`，目录名和包名同源，区分不出 title 到底跟谁走。
+   */
+  it('包名同时写进 index.html 的 title', async () => {
+    const result = await runCli(fixture, [
+      'my-app',
+      '-t',
+      'vanilla',
+      '--package-name',
+      'other-name',
+      '--overwrite',
+      '--no-immediate',
+    ])
+
+    expect(result.exitCode).toBe(0)
+    expect(fixture.read('my-app/index.html')).toContain('<title>other-name</title>')
+  })
+
   it('非法包名直接报错，不静默修正成一个合法的', async () => {
     const result = await runCli(fixture, [
       'my-app',

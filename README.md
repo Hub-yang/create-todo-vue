@@ -54,7 +54,7 @@ npm create @huberyyang/todo-vue .foo --overwrite -t vue-ts --no-immediate --pack
 - `-i, --immediate` 创建后立即安装依赖，装完会打印启动命令
 - `--no-immediate` 创建后不安装依赖，只打印后续步骤（不加这两个 flag 时会询问）
 - `--overwrite` 目标已存在时直接覆盖，不再询问：目录会被清空（`.git` 保留），同名文件会被删除
-- `--package-name` 指定 `package.json` 的 `name`；不传则取目录名，目录名不是合法包名时会询问
+- `--package-name` 指定包名，同时写进 `package.json` 的 `name` 和 `index.html` 的 `<title>`；不传则取目录名，目录名不是合法包名时会询问
 
 传入未声明的参数会直接报错退出，并列出拼错的那个。`--package-name` 的值不合法时同样直接报错，**不会**替你静默改成一个合法的。
 
@@ -92,7 +92,7 @@ npm create @huberyyang/todo-vue .foo --overwrite -t vue-ts --no-immediate --pack
 - `custom-vitesse-lite` → `degit antfu-collective/vitesse-lite`（Vitesse Lite）
 
 > 转交上游的模板由对方的脚手架直接生成，因此**不会**像内置模板那样把 `package.json` 的 `name`
-> 和 `index.html` 的 `<title>` 改写成你的项目名——需要的话生成后自己改一下。这几个还需要联网。
+> 和 `index.html` 的 `<title>` 改写成包名——需要的话生成后自己改一下。这几个还需要联网。
 
 ### 📜 许可证 (License)
 
