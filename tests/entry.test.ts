@@ -106,6 +106,7 @@ describe('模块入口', () => {
       'vanilla',
       'vue-ts',
       'vue',
+      'vue-dev',
       'custom-create-vue',
       'custom-nuxt',
       'custom-vike-vue',

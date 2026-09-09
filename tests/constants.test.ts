@@ -24,6 +24,7 @@ describe('模板注册表', () => {
       'vanilla',
       'vue-ts',
       'vue',
+      'vue-dev',
       'custom-create-vue',
       'custom-nuxt',
       'custom-vike-vue',
@@ -75,6 +76,83 @@ describe('模板注册表', () => {
       expect(fs.readFileSync(readme, 'utf-8'), `template-${name}/README.md 的内容不是占位模板名`)
         .toBe(`# ${name}\n`)
     }
+  })
+
+  /**
+   * CTV-41：模板从别处拷进来时必须剥掉上游的身份信息。
+   *
+   * `template-vue-dev` 来自 `Hub-yang/my-vue-dev-template`，上游的 package.json 带着
+   * author / homepage / repository / bugs 四个字段。这些字段是**机器读的**——用户拿模板
+   * 建了项目再 `npm publish`，npm 页面上的「Repository」和「Report issues」会指回上游，
+   * 别人提的 issue 会落到错的仓库去。页面上可见的署名链接（模板 footer 里那个 GitHub 图标）
+   * 是另一回事，用户想删随手就删，不在这条的管辖范围内。
+   *
+   * 禁止字段清单是硬编码的，不从被测数据派生：被测的是模板 package.json 的内容，
+   * 期望来自「我们的规矩」，两边是不同的源。往任一模板加个 author 字段就能让它红。
+   */
+  it('内置模板的 package.json 不带上游作者的身份字段', () => {
+    const forbidden = ['author', 'homepage', 'repository', 'bugs', 'funding', 'maintainers']
+    for (const name of builtinTemplates) {
+      const pkg = JSON.parse(fs.readFileSync(
+        path.join(repoRoot, `template-${name}`, 'package.json'),
+        'utf-8',
+      ))
+      for (const field of forbidden) {
+        expect(pkg, `template-${name}/package.json 带了 ${field}，会把用户的项目指回上游`)
+          .not
+          .toHaveProperty(field)
+      }
+    }
+  })
+
+  /**
+   * CTV-41：模板不该替用户锁死包管理器。
+   *
+   * 这个 CLI 支持 5 种包管理器（`pkgFromUserAgent` 认出来之后连安装命令都会跟着变），
+   * 模板里留一个 `packageManager: "pnpm@x.y.z"` 等于把用 npm/yarn/bun 的用户按回 pnpm；
+   * 而且 pnpm 11 默认开启 manage-package-manager-versions，会真的去 registry 拉那个版本。
+   */
+  it('内置模板的 package.json 不锁 packageManager', () => {
+    for (const name of builtinTemplates) {
+      const pkg = JSON.parse(fs.readFileSync(
+        path.join(repoRoot, `template-${name}`, 'package.json'),
+        'utf-8',
+      ))
+      expect(pkg, `template-${name} 锁了 packageManager，会挡掉用其它包管理器的用户`)
+        .not
+        .toHaveProperty('packageManager')
+    }
+  })
+
+  /**
+   * CTV-41：template-vue-dev 必须带一份 pnpm-workspace.yaml 放行 @parcel/watcher 的构建脚本。
+   *
+   * 2026-09-09 实测：不带这个文件时，在生成出来的项目里跑 `pnpm install` 会以**退出码 1**
+   * 结束，报 `[ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: @parcel/watcher@2.6.0`
+   * （pnpm 10 只是警告，pnpm 11 直接失败）。而 CLI 的 `-i` 会把安装的退出码原样透传（CTV-39），
+   * 所以用 pnpm 的用户一旦选了「立即安装依赖」，看到的就是创建失败。
+   *
+   * 刻意只放行这一个包，也刻意不抄上游那份文件里的 minimumReleaseAgeExclude /
+   * trustPolicyExclude——那些绑着具体版本号（如 `@types/node@26.3.0`），拷进模板当天就开始过期。
+   *
+   * 这条钉的是「文件别被误删或被后来的同步覆盖掉」。真实的 `pnpm install` 不进测试套件
+   * （要联网、慢），与仓库既有边界一致。
+   */
+  it('template-vue-dev 带着放行 @parcel/watcher 的 pnpm-workspace.yaml', () => {
+    const yaml = path.join(repoRoot, 'template-vue-dev', 'pnpm-workspace.yaml')
+    expect(fs.existsSync(yaml), 'template-vue-dev 缺少 pnpm-workspace.yaml，pnpm 11 装依赖会退 1').toBe(true)
+
+    const content = fs.readFileSync(yaml, 'utf-8')
+    expect(content, 'pnpm-workspace.yaml 里没有 allowBuilds 映射').toMatch(/^allowBuilds:/m)
+    expect(content, '没放行 @parcel/watcher，pnpm 11 会报 ERR_PNPM_IGNORED_BUILDS')
+      .toMatch(/^\s+'@parcel\/watcher':/m)
+    // 绑死具体版本号的两项不该被抄进来，它们拷进来当天就开始过期
+    expect(content, 'minimumReleaseAgeExclude 绑着具体版本号，不该抄进模板')
+      .not
+      .toMatch(/minimumReleaseAgeExclude/)
+    expect(content, 'trustPolicyExclude 绑着具体版本号，不该抄进模板')
+      .not
+      .toMatch(/trustPolicyExclude/)
   })
 
   // CTV-01：catalog: 是 pnpm workspace 专有协议，需要 pnpm-workspace.yaml 提供定义源。

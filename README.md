@@ -87,6 +87,7 @@ npm create @huberyyang/todo-vue .foo --overwrite -t vue-ts --no-immediate --pack
 
 - `vanilla` / `vanilla-ts`
 - `vue` / `vue-ts`
+- `vue-dev`：比 vue-ts 重一档，预装 unocss、vueuse、vue-router 自动路由、element-plus 图标、自动导入，以及 eslint + husky + commitlint 一整套工具链
 - `lit` / `lit-ts`
 
 转交上游脚手架的模板（同样 `-t` 可直接指定，交互式在 Vue 下也能选到）：

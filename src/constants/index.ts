@@ -17,7 +17,7 @@ interface Framework {
   variants?: FrameworkVariant[]
 }
 
-const { green, yellow, blue, redBright, greenBright } = colors
+const { green, yellow, blue, cyan, redBright, greenBright } = colors
 
 export const DEFAULT_TARGET_DIR = 'vue-project'
 
@@ -69,6 +69,15 @@ export const FRAMEWORKS: Framework[] = [
         name: 'vue',
         display: 'JavaScript',
         color: yellow,
+      },
+      // CTV-41：Hubery 自己维护的 vue3 开发模板（上游 Hub-yang/my-vue-dev-template）。
+      // 比 vue-ts 重一档：预装 unocss / vueuse / vue-router 自动路由 / element-plus 图标 /
+      // 自动导入 / eslint + husky + commitlint 一整套工具链。
+      // 上游更新后本目录不会自动跟上，需要手动同步。
+      {
+        name: 'vue-dev',
+        display: 'TypeScript + 工具链',
+        color: cyan,
       },
       {
         name: 'custom-create-vue',

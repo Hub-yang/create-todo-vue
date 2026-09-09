@@ -1,0 +1,5 @@
+# pnpm 11 起，依赖带构建脚本却没被显式放行时 `pnpm install` 会直接退出码 1（pnpm 10 只是警告）。
+# @parcel/watcher 是可选的原生文件监听模块，不构建也有 JS 兜底，所以放行成「不构建」即可。
+# 这个文件没有 packages 字段，不是 monorepo 声明，纯粹用来放这一条配置。
+allowBuilds:
+  '@parcel/watcher': false
