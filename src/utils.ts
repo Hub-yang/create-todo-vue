@@ -280,3 +280,46 @@ export function install(root: string, pkgManager: string): number {
     cwd: root,
   })
 }
+
+/**
+ * 逐级向上查找 `.git`，用来判断某个路径是不是已经落在一个 git 仓库里
+ *
+ * 形状刻意与 `findPackageJson()` 一致，包括「到文件系统根时 `dirname` 返回自身」
+ * 这个终止条件。
+ *
+ * 用 `existsSync` 而不是判断「是不是目录」：git worktree 与 submodule 里的 `.git`
+ * 是一个**文件**（内容是 `gitdir: …`），那同样意味着已经在仓库里了。
+ *
+ * @param {string} startDir - 查找起点
+ * @returns 找到的 `.git` 路径；一路到根都没有则返回 undefined
+ */
+export function findGitDir(startDir: string): string | undefined {
+  let dir = path.resolve(startDir)
+  while (true) {
+    const candidate = path.join(dir, '.git')
+    if (fs.existsSync(candidate)) {
+      return candidate
+    }
+    const parent = path.dirname(dir)
+    if (parent === dir) {
+      return undefined
+    }
+    dir = parent
+  }
+}
+
+/**
+ * 在目标目录里初始化 git 仓库
+ *
+ * `stdio: 'ignore'` 是必需的：git init 会打一句 "Initialized empty Git repository
+ * in …"，那行字会落在 clack 的框里，把我们自己维护的渲染撞乱（同 CTV-34 的立场）。
+ *
+ * @param {string} root - 目标目录
+ * @returns git 的退出码，0 表示成功
+ */
+export function gitInit(root: string): number {
+  return run(['git', 'init'], {
+    stdio: 'ignore',
+    cwd: root,
+  })
+}

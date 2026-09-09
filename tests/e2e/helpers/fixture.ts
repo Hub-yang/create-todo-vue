@@ -29,6 +29,13 @@ export function createFixture(): Fixture {
   function walk(root: string, prefix = ''): string[] {
     const out: string[] = []
     for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+      // `.git` 是 git 的内部状态，不是项目的文件树。列进来会让每条 `toEqual`
+      // 断言平白多出几十行，而且那些内容随 git 版本变化（hooks 样例的数量、
+      // objects 的布局），断言会因为换了台机器就红。仓库是否被初始化由
+      // `git-init.e2e.test.ts` 用 `exists('<项目>/.git')` 专门钉住。
+      if (entry.name === '.git') {
+        continue
+      }
       const rel = prefix ? `${prefix}/${entry.name}` : entry.name
       if (entry.isDirectory()) {
         out.push(`${rel}/`)

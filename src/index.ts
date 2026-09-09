@@ -19,7 +19,7 @@ import {
 } from './plan'
 import { scaffoldTemplate } from './scaffold'
 import { createTerminal } from './terminal'
-import { cancel, emptyDir, formatTargetDir, getFullCustomCommand, getLabel, getVersion, install, isEmpty, isValidPackageName, pathKind, pkgFromUserAgent, toValidPackageName } from './utils'
+import { cancel, emptyDir, findGitDir, formatTargetDir, getFullCustomCommand, getLabel, getVersion, gitInit, install, isEmpty, isValidPackageName, pathKind, pkgFromUserAgent, toValidPackageName } from './utils'
 
 interface Options {
   'template'?: string
@@ -360,6 +360,28 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
     renameFiles: RENAME_FILES,
   })
   spin.stop('模板创建成功')
+
+  // 初始化 git 仓库（CTV-22）。刻意排在装依赖**之前**：装依赖失败那一支会直接
+  // `return status`，放到它后面会让「装依赖失败但项目已经创建好了」的路径整个
+  // 跳过 git init。这不是独立的一步，是「创建项目」的收尾动作，所以不占编号。
+  //
+  // 已经在别人的仓库里就不建：在一个 git 仓库中再 `git init` 出嵌套仓库几乎从来
+  // 不是用户想要的（上游 create-vue 同样先检测 `.git` 再决定提不提示）。注意
+  // `emptyDir()` 刻意跳过 `.git`，所以 `--overwrite` 一个已有仓库的目录之后，
+  // `root` 自己仍带着 `.git`，这里同样会命中。
+  const existingGitDir = findGitDir(root)
+  if (existingGitDir) {
+    prompts.log.info('目标目录已在 git 仓库中，跳过 git init')
+  }
+  else {
+    const gitStatus = gitInit(root)
+    if (gitStatus !== 0) {
+      // 不改退出码：项目已经创建成功了。这跟「装依赖失败」刻意不同——那边透传
+      // 退出码是因为装依赖本身就是用户的诉求之一（CTV-39），而 git init 是附加
+      // 动作，让它把一次成功的创建变成失败是撒谎。
+      prompts.log.warn(`git 仓库初始化失败（git 退出码 ${gitStatus}），项目已创建`)
+    }
+  }
 
   // 5. 询问是否立即安装
   let immediate = argImmediate
