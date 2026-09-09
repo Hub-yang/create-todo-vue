@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ARGV_OPTIONS } from '../src/constants'
+import { ARGV_OPTIONS, FRAMEWORKS, RENAME_FILES } from '../src/constants'
 import { collectKnownFlags } from '../src/plan'
 
 /**
@@ -77,6 +77,44 @@ describe('模块入口', () => {
     expect(ARGV_OPTIONS.boolean).toEqual(['help', 'version', 'overwrite', 'immediate'])
     expect(ARGV_OPTIONS.string).toEqual(['template', 'package-name'])
     expect(ARGV_OPTIONS.alias).toEqual({ h: 'help', v: 'version', t: 'template', i: 'immediate' })
+  })
+
+  /**
+   * CTV-33：上面那条钉子是 CTV-17 的教训换来的，但同一类风险不止 `ARGV_OPTIONS` 一个。
+   * `FRAMEWORKS` 与 `RENAME_FILES` 同样是模块级共享状态，且 `main()` 会读它们来渲染
+   * 选择器、决定文件改名。
+   *
+   * **这里原本是盲区，实测过**：往 `main()` 里加一行 `FRAMEWORKS[0].variants[0].name = ...`，
+   * 239 条单测全绿，一条都没红。原因是派生物挡不住这类污染——`TEMPLATES` 和
+   * `HELP_MESSAGE` 都在模块加载时求值一次，之后再改 `FRAMEWORKS` 它们不会跟着变，
+   * `constants.test.ts` 那些断言因此永远看不见。
+   *
+   * 期望值全部硬编码：从 `FRAMEWORKS` 派生的话两边同源，断言退化成恒等式（CTV-30 实测过
+   * 一次）。也不写成「调用前后相等」——`isolate: false` 下状态可能已被同文件其它用例弄脏，
+   * 相对比较会一路绿着骗人。
+   */
+  it('调用 main() 不会改写模板注册表', async () => {
+    const { main } = await import('../src/index')
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await main(['--version'])
+    await main(['--help'])
+
+    expect(FRAMEWORKS.map(f => f.name)).toEqual(['vanilla', 'vue', 'lit'])
+    expect(FRAMEWORKS.flatMap(f => f.variants?.map(v => v.name) ?? [])).toEqual([
+      'vanilla-ts',
+      'vanilla',
+      'vue-ts',
+      'vue',
+      'custom-create-vue',
+      'custom-nuxt',
+      'custom-vike-vue',
+      'custom-vitesse',
+      'custom-vitesse-lite',
+      'lit-ts',
+      'lit',
+    ])
+    expect(RENAME_FILES).toEqual({ _gitignore: '.gitignore' })
   })
 
   it('main() 跑过之后，派生出的已知参数清单仍然全是字符串', async () => {
