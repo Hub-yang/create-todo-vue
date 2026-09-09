@@ -1,1 +1,7 @@
-npx lint-staged
+# --config 是必需的，不能省成裸的 `npx lint-staged`。
+# lint-staged 会为每个暂存文件**向上查找最近的配置**，而 template-vue-dev/ 自带一份
+# `lint-staged.config.mjs`（内容是 `{'*': 'eslint --fix'}`，属于模板本身的一部分）。
+# 不指定 --config 时那份会接管全部 33 个模板文件，用本仓库的 eslint 去 --fix 它们，
+# 而模板的 eslint.config.ts 依赖本仓库没装的插件（@unocss/eslint-plugin 等）——
+# 2026-09-09 实测直接挂起 7 分钟不返回。传了 --config 就禁用配置发现。
+npx lint-staged --config lint-staged.config.mjs
