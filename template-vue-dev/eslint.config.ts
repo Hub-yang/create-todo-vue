@@ -16,6 +16,17 @@ export default antfu(
     },
     ignores: ['**/public/**'],
   },
+  // pnpm-workspace.yaml 规则定制
+  {
+    files: ['pnpm-workspace.yaml'],
+    rules: {
+      // eslint-plugin-pnpm 会强制要求 minimumReleaseAgeExcludePrune / shellEmulator /
+      // trustPolicy 三条设置，那是仓库开发者的偏好，不该强加给刚生成的项目——
+      // 其中 trustPolicy: no-downgrade 会让本模板的 `pnpm install` 直接退出码 1
+      // （实测 ERR_PNPM_TRUST_DOWNGRADE，semver@6.3.1 由 vue-devtools 传递进来）。
+      'pnpm/yaml-enforce-settings': 'off',
+    },
+  },
   // vue规则定制
   {
     files: ['**/*.vue'],

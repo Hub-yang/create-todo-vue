@@ -17,6 +17,14 @@ const builtinTemplates = FRAMEWORKS
   .filter(v => !('customCommand' in v && v.customCommand))
   .map(v => v.name)
 
+/** 递归列出目录下的全部文件（绝对路径），给按内容断言的用例用 */
+function collectFiles(dir: string): string[] {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(dir, entry.name)
+    return entry.isDirectory() ? collectFiles(full) : [full]
+  })
+}
+
 describe('模板注册表', () => {
   it('注册表 TEMPLATES 恰好是 FRAMEWORKS 派生出的全部变体名', () => {
     expect(TEMPLATES).toEqual([
@@ -146,13 +154,15 @@ describe('模板注册表', () => {
     expect(content, 'pnpm-workspace.yaml 里没有 allowBuilds 映射').toMatch(/^allowBuilds:/m)
     expect(content, '没放行 @parcel/watcher，pnpm 11 会报 ERR_PNPM_IGNORED_BUILDS')
       .toMatch(/^\s+'@parcel\/watcher':/m)
-    // 绑死具体版本号的两项不该被抄进来，它们拷进来当天就开始过期
+    // 绑死具体版本号的两项不该被抄进来，它们拷进来当天就开始过期。
+    // 必须是**行首精确**匹配而不是子串：`minimumReleaseAgeExcludePrune` 是另一个设置
+    // （布尔值，eslint-plugin-pnpm 强制要求，见下面那条用例），子串匹配会把它一起误禁掉。
     expect(content, 'minimumReleaseAgeExclude 绑着具体版本号，不该抄进模板')
       .not
-      .toMatch(/minimumReleaseAgeExclude/)
+      .toMatch(/^minimumReleaseAgeExclude:/m)
     expect(content, 'trustPolicyExclude 绑着具体版本号，不该抄进模板')
       .not
-      .toMatch(/trustPolicyExclude/)
+      .toMatch(/^trustPolicyExclude:/m)
   })
 
   // CTV-01：catalog: 是 pnpm workspace 专有协议，需要 pnpm-workspace.yaml 提供定义源。
@@ -167,6 +177,115 @@ describe('模板注册表', () => {
         .not
         .toMatch(/"catalog:/)
     }
+  })
+
+  /**
+   * CTV-42：pnpm 11 起，依赖带 build script 却没被显式放行时 `pnpm install` 直接退出码 1
+   * （pnpm 10 只是警告）。vite 7 依赖 `esbuild`（`postinstall: node install.js`），于是
+   * 六个内置模板对 pnpm 用户全都装不上，连带 `build` / `dev` 一起挂（pnpm 跑 script 前的
+   * 依赖状态检查会重跑 install）。而 CTV-39 让 `-i` 原样透传退出码，用户看到的就是
+   * 「└ 依赖安装失败」。vite 8 改用 rolldown，依赖树里连 esbuild 都不存在。
+   *
+   * 这条是那个不变量的**静态代理**：真正要保证的是「模板不引入未放行的 build script」，
+   * 那件事只有真装一次才证得了（2026-09-10 已在沙箱实测 6/6 退 0、esbuild 包数归零），
+   * 这里钉住的是能静态查到的那个因。期望值 8 硬编码，不从模板数据派生——
+   * 派生过来两边同源，断言就退化成恒等式。
+   */
+  it('内置模板的 vite 主版本不低于 8（vite 7 的 esbuild 会让 pnpm 装依赖退 1）', () => {
+    for (const name of builtinTemplates) {
+      const pkg = JSON.parse(fs.readFileSync(
+        path.join(repoRoot, `template-${name}`, 'package.json'),
+        'utf-8',
+      ))
+      const range: string | undefined = pkg.devDependencies?.vite ?? pkg.dependencies?.vite
+      expect(range, `template-${name} 没有声明 vite`).toBeTruthy()
+
+      const major = Number.parseInt(range!.replace(/^\D*/, ''), 10)
+      expect(
+        major,
+        `template-${name} 声明的是 vite ${range}，vite 7 会把带 postinstall 的 esbuild 带进依赖树`,
+      ).toBeGreaterThanOrEqual(8)
+    }
+  })
+
+  /**
+   * CTV-43：`<script setup>` 不带 `lang="ts"` 时 vue-tsc 认为这个 SFC 没有类型信息，
+   * 于是 import 它的 `main.ts` 报 `TS7016 implicitly has an 'any' type`，
+   * `vue-tsc -b && vite build` 直接失败。**与包管理器无关**，npm 用户一样构建不了。
+   *
+   * 只钉 vue-ts：`template-vue` 是 JS 模板，不带 lang 才是对的；`template-vue-dev` 的
+   * 构建是 `vue-tsc --noEmit` 且实测退 0，不把它一起圈进来。
+   */
+  it('template-vue-ts 的每个 SFC 都标了 lang="ts"', () => {
+    const srcDir = path.join(repoRoot, 'template-vue-ts', 'src')
+    const vueFiles = collectFiles(srcDir).filter(f => f.endsWith('.vue'))
+
+    expect(vueFiles.length, 'template-vue-ts/src 下一个 .vue 都没找到，这条断言已失去意义')
+      .toBeGreaterThan(0)
+
+    for (const file of vueFiles) {
+      const rel = path.relative(repoRoot, file)
+      const scriptTag = fs.readFileSync(file, 'utf-8').match(/<script[^>]*>/)?.[0]
+      expect(scriptTag, `${rel} 没有 <script> 块`).toBeTruthy()
+      expect(scriptTag, `${rel} 的 script 块缺 lang="ts"，vue-tsc 会对它报 TS7016`)
+        .toMatch(/lang="ts"/)
+    }
+  })
+
+  /**
+   * CTV-44：`template-vue-dev` 是唯一自带 eslint 的模板，它的 `@antfu/eslint-config`
+   * 会带上 `eslint-plugin-pnpm`，那个插件强制要求 `minimumReleaseAgeExcludePrune` /
+   * `shellEmulator` / `trustPolicy` 三条设置，缺任何一条 `pnpm lint` 就红。
+   *
+   * **但那三条不能照单全收**：`trustPolicy: no-downgrade` 会让这个模板的
+   * `pnpm install` 直接退出码 1——2026-09-10 实测 `ERR_PNPM_TRUST_DOWNGRADE`，
+   * `semver@6.3.1` 经 `vite-plugin-vue-devtools` → `vite-plugin-vue-inspector`
+   * → `@babel/core` 传递进来。**让 lint 变绿的代价是让装依赖变红**，而装不上依赖
+   * 比 lint 报错严重得多（CTV-39 让 `-i` 透传退出码，用户直接看到创建失败）。
+   *
+   * 所以走的是另一条路：模板的 `eslint.config.ts` 关掉这条规则。两条断言配套——
+   * 一条钉住「不许再把 trustPolicy 加回来」，一条钉住「关规则那段不许被删」，
+   * 少了任何一条，`pnpm install` 与 `pnpm lint` 之中就会有一个退 1。
+   */
+  it('template-vue-dev 的 pnpm-workspace.yaml 不设 trustPolicy（会让 pnpm install 退 1）', () => {
+    const content = fs.readFileSync(
+      path.join(repoRoot, 'template-vue-dev', 'pnpm-workspace.yaml'),
+      'utf-8',
+    )
+    expect(content, 'trustPolicy: no-downgrade 会让这个模板 ERR_PNPM_TRUST_DOWNGRADE 退 1')
+      .not
+      .toMatch(/^trustPolicy:/m)
+    // 放行 @parcel/watcher 仍然是必需的，别在删 trustPolicy 时把它一起删了
+    expect(content, '没放行 @parcel/watcher，pnpm 11 会报 ERR_PNPM_IGNORED_BUILDS')
+      .toMatch(/^\s+'@parcel\/watcher':/m)
+  })
+
+  it('template-vue-dev 的 eslint 配置关掉了 pnpm/yaml-enforce-settings', () => {
+    const content = fs.readFileSync(
+      path.join(repoRoot, 'template-vue-dev', 'eslint.config.ts'),
+      'utf-8',
+    )
+    expect(content, '没关掉这条规则，生成的项目跑 pnpm lint 会因缺三条 pnpm 设置而退 1')
+      .toMatch(/'pnpm\/yaml-enforce-settings':\s*'off'/)
+  })
+
+  /**
+   * CTV-44：同一个模板的 `package.json` 还要过 `jsonc/sort-keys`。antfu 那套要求的次序是
+   * `name` → `type` → `version` → `private`，而 Vite 官方模板的原始顺序是
+   * `name` → `private` → `version` → `type`，照拷进来就是两个 lint 错误。
+   *
+   * 只钉 vue-dev：其余六个模板没有 eslint 配置，key 顺序对它们没有约束力。
+   */
+  it('template-vue-dev 的 package.json key 顺序满足 jsonc/sort-keys', () => {
+    const keys: string[] = Object.keys(JSON.parse(fs.readFileSync(
+      path.join(repoRoot, 'template-vue-dev', 'package.json'),
+      'utf-8',
+    )))
+    const at = (k: string) => keys.indexOf(k)
+
+    expect(at('name'), 'package.json 缺 name').toBe(0)
+    expect(at('type'), 'type 应排在 version 之前').toBeLessThan(at('version'))
+    expect(at('version'), 'version 应排在 private 之前').toBeLessThan(at('private'))
   })
 
   /**
