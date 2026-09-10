@@ -88,6 +88,33 @@ describe('命令行基础行为', () => {
   })
 
   /**
+   * CTV-45：框顶那一行要能看出跑的是哪一版。
+   *
+   * 起因是 2026-09-10 的一次误诊：pnpm 默认的 `minimumReleaseAge`（24 小时内发布的
+   * 版本一律不取）让 `pnpm create` 静默回退到 v1.6.1，而 intro 只写 `create-todo-vue`，
+   * 于是在一个早已修掉的旧版上白测了一轮，界面上没有任何线索。
+   *
+   * 两条刻意分开：上面一条钉「真的打出来了、形状对」，下面一条钉「跟 `--version`
+   * 不会漂」。期望值不从 `src/` 派生——包名硬编码，版本号取自**另一条 CLI 路径的
+   * 实际输出**，两者不同源，才不会退化成恒等式。
+   */
+  it('intro 那一行带上版本号', async () => {
+    const result = await runCli(fixture, ['my-app', '-t', 'vanilla', '--overwrite', '--no-immediate'])
+
+    expect(result.exitCode).toBe(0)
+    const introLine = result.stdout.split('\n').find(line => line.startsWith('┌'))
+    expect(introLine).toMatch(/^┌\s+create-todo-vue v\d+\.\d+\.\d+/)
+  })
+
+  it('intro 里的版本号与 --version 的输出一致', async () => {
+    const version = (await runCli(fixture, ['--version'])).stdout.trim()
+    const result = await runCli(fixture, ['my-app', '-t', 'vanilla', '--overwrite', '--no-immediate'])
+
+    const introLine = result.stdout.split('\n').find(line => line.startsWith('┌'))
+    expect(introLine?.replace(/^┌\s+/, '')).toBe(`create-todo-vue v${version}`)
+  })
+
+  /**
    * ⚠️ 这条断言换过一次，理由值得留着。
    *
    * 原本第二句是 `expect(result.stdout).not.toContain('vitesse')`，注释写的是

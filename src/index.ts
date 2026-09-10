@@ -10,6 +10,7 @@ import { ask, NonInteractiveError } from './interactive'
 import {
   buildCustomCommandArgs,
   buildDoneMessage,
+  buildIntroTitle,
   collectKnownFlags,
   findUnknownFlags,
   findVariantCommand,
@@ -138,7 +139,7 @@ export async function main(argvInput: string[] = process.argv.slice(2)): Promise
     return EXIT_USAGE
   }
 
-  terminal.open('create-todo-vue')
+  terminal.open(buildIntroTitle(getVersion(ENTRY_DIR)))
 
   const pkgInfo = pkgFromUserAgent(process.env.npm_config_user_agent)
 

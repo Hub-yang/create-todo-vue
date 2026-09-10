@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { dim } from 'picocolors'
 import { getInstallCommand, getRunCommand, isValidPackageName } from './utils'
 
 /**
@@ -235,6 +236,35 @@ export function buildDoneMessage(
     : getInstallCommand(pkgManager)
   doneMessage += `\n ${command.join(' ')}`
   return doneMessage
+}
+
+/**
+ * 拼出 intro 那一行的标题
+ *
+ * 版本号跟在包名后面、单独上色，为的是让用户一眼看出**跑的到底是哪一版**。
+ * 起因是 2026-09-10 的一次误诊（CTV-45）：pnpm 默认的 `minimumReleaseAge` 会
+ * 拒绝 24 小时内发布的版本，`pnpm create` 因此静默回退到 v1.6.1，而框顶只写
+ * `create-todo-vue`，于是在一个早已修掉的旧版上白测了一轮却毫无察觉。
+ *
+ * 读不到版本时**整段后缀都不打**：`getVersion()` 此时返回 `'unknown'`，
+ * 拼出来的 `create-todo-vue vunknown` 长得像个真版本号，比不显示更糟。
+ * 空串走同一支——`getVersion()` 的 `?? 'unknown'` 只挡 null/undefined，
+ * `"version": ""` 会原样返回。
+ *
+ * `color` 做成参数而不是写死 `dim`，与 `getLabel()` 同形：picocolors 在非 TTY 下
+ * 不注入转义码，写死的话测试永远拿到裸字符串，「版本那段确实被弱化了」就钉不住。
+ * @param {string} version - 版本号，通常来自 `getVersion()`
+ * @param {Function} color - 给版本号那一段上色，默认 picocolors 的 dim
+ */
+export function buildIntroTitle(
+  version: string,
+  color: (text: string) => string = dim,
+): string {
+  const name = 'create-todo-vue'
+  if (!version || version === 'unknown') {
+    return name
+  }
+  return `${name} ${color(`v${version}`)}`
 }
 
 /** `mri` 解析配置里与「参数名」有关的部分 */

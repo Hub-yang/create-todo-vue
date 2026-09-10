@@ -4,6 +4,7 @@ import { ARGV_OPTIONS, FRAMEWORKS, RENAME_FILES } from '../src/constants'
 import {
   buildCustomCommandArgs,
   buildDoneMessage,
+  buildIntroTitle,
   collectKnownFlags,
   derivePackageName,
   findUnknownFlags,
@@ -15,6 +16,10 @@ import {
   resolvePackageName,
   withPackageName,
 } from '../src/plan'
+
+/** picocolors 在 TTY 下会真的注入 ANSI 转义码，断言前统一剥掉（同 utils.test.ts） */
+const ESC = String.fromCharCode(27)
+const stripAnsi = (s: string) => s.split(new RegExp(`${ESC}\\[\\d+m`, 'g')).join('')
 
 /**
  * 这些用例钉的是 CTV-15 之前 `init()` 里的既有行为，逐条对着原实现推导，
@@ -539,5 +544,38 @@ describe('findUnknownFlags', () => {
 
   it('不误报：`--` 之后的内容进 _，不产生键', () => {
     expect(findUnknownFlags({ _: ['my-app', '--weird'] }, known)).toEqual([])
+  })
+})
+
+/**
+ * CTV-45：intro 那一行要能看出跑的是哪个版本。
+ *
+ * 起因是 2026-09-10 的一次误诊：pnpm 默认的 `minimumReleaseAge`（24 小时内发布的
+ * 版本一律不取）把 `pnpm create` 回退到了 v1.6.1，而框顶只写 `create-todo-vue`，
+ * 于是在一个早已修掉的旧版上白测了一轮，界面上没有任何线索。
+ *
+ * `color` 参数照抄 `getLabel` 的注入形状：picocolors 在非 TTY 下不注入转义码，
+ * 直接测 `dim` 永远拿到裸字符串，钉不住「版本那段确实被弱化了」。
+ */
+describe('buildIntroTitle', () => {
+  // 传自己的 color 函数，断言就不依赖 picocolors 是否检测到 TTY
+  const brackets = (s: string) => `<${s}>`
+
+  it('版本号跟在包名后面，带 v 前缀，且只有版本那段上色', () => {
+    expect(buildIntroTitle('1.9.0', brackets)).toBe('create-todo-vue <v1.9.0>')
+  })
+
+  it('读不到版本时只打包名，不打 vunknown，也不留多余空格', () => {
+    expect(buildIntroTitle('unknown', brackets)).toBe('create-todo-vue')
+  })
+
+  it('版本是空串时同样只打包名', () => {
+    // `getVersion()` 的 `?? 'unknown'` 只挡 null/undefined，
+    // package.json 里写着 `"version": ""` 时会原样返回空串
+    expect(buildIntroTitle('', brackets)).toBe('create-todo-vue')
+  })
+
+  it('不传 color 时默认走 picocolors，剥掉转义码后仍是同一行文本', () => {
+    expect(stripAnsi(buildIntroTitle('1.9.0'))).toBe('create-todo-vue v1.9.0')
   })
 })
